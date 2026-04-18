@@ -14,6 +14,12 @@ bundle_binary_path="$macos_dir/FederatedAgentsReceiver"
 cd "$repo_root"
 swift build
 
+bridge_binary_path="$build_dir/receiver-bridge"
+(
+  cd "$repo_root/go/receiverharness"
+  go build -o "$bridge_binary_path" "./cmd/receiver-bridge"
+)
+
 # Clean up stale detached launches so a hidden old process does not make
 # a fresh GUI launch look like a no-op.
 pkill -f "$binary_path" >/dev/null 2>&1 || true
@@ -51,5 +57,9 @@ EOF
 
 rm -f "$bundle_binary_path"
 ln -s "$binary_path" "$bundle_binary_path"
+
+bundle_bridge_path="$macos_dir/receiver-bridge"
+rm -f "$bundle_bridge_path"
+ln -s "$bridge_binary_path" "$bundle_bridge_path"
 
 open "$app_bundle"
