@@ -1,6 +1,6 @@
 {
   "packageID" : "cardiac-readmission-study",
-  "title" : "Cardiac 30-day readmission study design",
+  "title" : "Cardiac 30-day readmission study",
   "summary" : "The Vienna Cardiac Research Consortium wants a privacy-safe segment-level view of 30-day readmissions to help shape an upcoming multi-site study. The hospital (receiver) chooses the segmentation and minimum cell size; the sender never sees rows.",
   "sender" : {
     "name" : "Dr. Elena Marchetti",
