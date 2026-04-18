@@ -8,40 +8,33 @@ struct ReceiverRootView: View {
         NavigationSplitView {
             List {
                 Section("Inbox") {
-                    Button("Load Bundled Sample") {
+                    Button {
                         model.loadBundledSample()
+                    } label: {
+                        Label("Load Bundled Sample", systemImage: "tray.and.arrow.down")
                     }
 
-                    Button("Import Package") {
+                    Button {
                         model.importPackage()
+                    } label: {
+                        Label("Import Package", systemImage: "folder")
                     }
-                }
-
-                Section("Session") {
-                    Button("Add Data Source") {
-                        model.addDataSource()
-                    }
-                    .disabled(model.loadedPackage == nil)
-
-                    Button("Start Agent Session") {
-                        model.startSession()
-                    }
-                    .disabled(model.loadedPackage == nil || model.approvedSources.isEmpty)
                 }
             }
             .listStyle(.sidebar)
         } detail: {
             VStack(spacing: 0) {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
+                    VStack(alignment: .leading, spacing: 24) {
                         packageHeader
+                        sessionControlSection
                         capabilitySection
                         dataSection
                         questionSection
                         reviewSection
                         activitySection
                     }
-                    .padding(24)
+                    .padding(28)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .background(Color(nsColor: .windowBackgroundColor))
@@ -51,6 +44,58 @@ struct ReceiverRootView: View {
                 debugTraceSection
                     .frame(height: 240)
             }
+        }
+    }
+
+    private var sessionControlSection: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 12) {
+                    Button {
+                        model.addDataSource()
+                    } label: {
+                        Label("Add Data Source", systemImage: "plus.circle")
+                            .font(.body.weight(.medium))
+                            .padding(.vertical, 4)
+                    }
+                    .controlSize(.large)
+                    .disabled(model.loadedPackage == nil)
+
+                    Button {
+                        model.startSession()
+                    } label: {
+                        Label(model.canStartSession ? "Start Agent Session" : model.sessionButtonLabel,
+                              systemImage: model.canStartSession ? "play.fill" : "checkmark.circle")
+                            .font(.body.weight(.medium))
+                            .padding(.vertical, 4)
+                    }
+                    .controlSize(.large)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!model.canStartSession)
+
+                    if model.isSessionActive {
+                        Button(role: .destructive) {
+                            model.stopSession()
+                        } label: {
+                            Label("Stop", systemImage: "stop.fill")
+                                .font(.body.weight(.medium))
+                                .padding(.vertical, 4)
+                        }
+                        .controlSize(.large)
+                    }
+
+                    Spacer()
+                }
+
+                Text(model.sessionStatus)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 4)
+        } label: {
+            Text("Session")
+                .font(.headline)
         }
     }
 
@@ -355,27 +400,51 @@ private struct QuestionAnswerCard: View {
     let question: PendingQuestion
     let onSubmit: (String) -> Void
 
-    @State private var answer = ""
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             Text(question.title)
-                .font(.headline)
+                .font(.title3.weight(.semibold))
 
             Text(question.prompt)
+                .font(.body)
 
-            TextField(question.placeholder ?? "Type your answer", text: $answer, axis: .vertical)
-                .textFieldStyle(.roundedBorder)
-
-            Button("Send Answer") {
-                onSubmit(answer)
-                answer = ""
+            if question.choices.isEmpty {
+                Text("The agent did not provide answer choices.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Array(question.choices.enumerated()), id: \.offset) { _, choice in
+                        Button {
+                            onSubmit(choice)
+                        } label: {
+                            HStack {
+                                Text(choice)
+                                    .font(.body)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                Image(systemName: "arrow.right.circle.fill")
+                                    .foregroundStyle(.tint)
+                            }
+                            .padding(.vertical, 10)
+                            .padding(.horizontal, 14)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(Color.accentColor.opacity(0.10))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(Color.accentColor.opacity(0.35), lineWidth: 1)
+                            )
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
             }
-            .disabled(answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
-        .padding(12)
+        .padding(16)
         .background(
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: 14)
                 .fill(Color(nsColor: .controlBackgroundColor))
         )
     }
