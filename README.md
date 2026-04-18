@@ -1,3 +1,3 @@
 # federated-agents
 
-Starter repository for federated agents work.
+Bring your agent to the data, not the data to the agent.
