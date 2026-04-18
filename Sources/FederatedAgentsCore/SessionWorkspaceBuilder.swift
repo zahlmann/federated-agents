@@ -246,7 +246,7 @@ public struct SessionWorkspaceBuilder {
           echo "$RESPONSE_DIR/$request_id.json"
         }
 
-        wait_for_response() {
+        wait_for_response_path() {
           local request_id="$1"
           local response_path
           response_path="$(response_file "$request_id")"
@@ -255,7 +255,47 @@ public struct SessionWorkspaceBuilder {
             sleep 0.2
           done
 
-          cat "$response_path"
+          echo "$response_path"
+        }
+
+        read_response_field() {
+          local response_path="$1"
+          local field_name="$2"
+          local expected_status="${3:-}"
+          local default_error="$4"
+
+          python3 - "$response_path" "$field_name" "$expected_status" "$default_error" <<'PY'
+        import json
+        import sys
+        from pathlib import Path
+
+        response_path, field_name, expected_status, default_error = sys.argv[1:]
+        payload = json.loads(Path(response_path).read_text(encoding="utf-8"))
+
+        if expected_status and payload.get("status") != expected_status:
+            print(payload.get("message", default_error), file=sys.stderr)
+            sys.exit(1)
+
+        value = payload.get(field_name, "")
+        if value is None:
+            value = ""
+
+        sys.stdout.write(str(value))
+        PY
+        }
+
+        read_response_message() {
+          local response_path="$1"
+
+          python3 - "$response_path" <<'PY'
+        import json
+        import sys
+        from pathlib import Path
+
+        response_path = sys.argv[1]
+        payload = json.loads(Path(response_path).read_text(encoding="utf-8"))
+        sys.stdout.write(str(payload.get("message", "")))
+        PY
         }
 
         make_request() {
@@ -355,15 +395,8 @@ public struct SessionWorkspaceBuilder {
             done
 
             request_id="$(make_request "ask_user" "$title" "$prompt" "$placeholder")"
-            wait_for_response "$request_id" | python3 - <<'PY'
-        import json
-        import sys
-        payload = json.load(sys.stdin)
-        if payload.get("status") != "answered":
-            print(payload.get("message", "The question was not answered."), file=sys.stderr)
-            sys.exit(1)
-        print(payload.get("answer", ""))
-        PY
+            response_path="$(wait_for_response_path "$request_id")"
+            read_response_field "$response_path" "answer" "answered" "The question was not answered."
             ;;
           run-safe-query)
             sql=""
@@ -396,15 +429,8 @@ public struct SessionWorkspaceBuilder {
             fi
 
             request_id="$(make_request "safe_query" "" "" "" "$sql" "$rationale")"
-            wait_for_response "$request_id" | python3 - <<'PY'
-        import json
-        import sys
-        payload = json.load(sys.stdin)
-        if payload.get("status") != "approved":
-            print(payload.get("message", "The safe query was rejected."), file=sys.stderr)
-            sys.exit(1)
-        print(payload.get("resultJSON", ""))
-        PY
+            response_path="$(wait_for_response_path "$request_id")"
+            read_response_field "$response_path" "resultJSON" "approved" "The safe query was rejected."
             ;;
           submit-result)
             summary=""
@@ -429,15 +455,8 @@ public struct SessionWorkspaceBuilder {
 
             result_json="$(cat "$json_file")"
             request_id="$(make_request "submit_result" "" "" "" "" "" "$summary" "$result_json")"
-            wait_for_response "$request_id" | python3 - <<'PY'
-        import json
-        import sys
-        payload = json.load(sys.stdin)
-        if payload.get("status") != "approved":
-            print(payload.get("message", "Result sending was not approved."), file=sys.stderr)
-            sys.exit(1)
-        print(payload.get("message", "approved"))
-        PY
+            response_path="$(wait_for_response_path "$request_id")"
+            read_response_field "$response_path" "message" "approved" "Result sending was not approved."
             ;;
           log)
             message=""
@@ -456,7 +475,8 @@ public struct SessionWorkspaceBuilder {
             done
 
             request_id="$(make_request "log" "" "" "" "" "" "" "" "$message")"
-            wait_for_response "$request_id" >/dev/null
+            response_path="$(wait_for_response_path "$request_id")"
+            read_response_message "$response_path" >/dev/null
             ;;
           *)
             print_help
