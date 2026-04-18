@@ -31,20 +31,95 @@ struct ReceiverRootView: View {
             }
             .listStyle(.sidebar)
         } detail: {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    packageHeader
-                    capabilitySection
-                    dataSection
-                    questionSection
-                    reviewSection
-                    activitySection
+            VStack(spacing: 0) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        packageHeader
+                        capabilitySection
+                        dataSection
+                        questionSection
+                        reviewSection
+                        activitySection
+                    }
+                    .padding(24)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(24)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(nsColor: .windowBackgroundColor))
+
+                Divider()
+
+                debugTraceSection
+                    .frame(height: 240)
             }
-            .background(Color(nsColor: .windowBackgroundColor))
         }
+    }
+
+    private var debugTraceSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                Text("Debug Trace")
+                    .font(.headline)
+
+                Text(model.harnessBinaryStatus)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 6) {
+                        if model.traceEntries.isEmpty {
+                            Text("No trace events yet. Start a session to see harness API calls, tool requests, and tool responses.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 12)
+                        } else {
+                            ForEach(model.traceEntries) { entry in
+                                traceEntryView(entry)
+                                    .id(entry.id)
+                            }
+                        }
+                    }
+                    .padding(.bottom, 8)
+                }
+                .onChange(of: model.traceEntries.count) { _, _ in
+                    if let last = model.traceEntries.last {
+                        proxy.scrollTo(last.id, anchor: .bottom)
+                    }
+                }
+            }
+        }
+        .background(Color(nsColor: .textBackgroundColor).opacity(0.6))
+    }
+
+    private func traceEntryView(_ entry: TraceEntry) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Text(entry.channel)
+                    .font(.caption.monospaced().weight(.semibold))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color.accentColor.opacity(0.18))
+                    )
+
+                Text(entry.timestamp.formatted(date: .omitted, time: .standard))
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+            }
+
+            Text(entry.payloadJSON)
+                .font(.caption.monospaced())
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 4)
     }
 
     private var packageHeader: some View {
