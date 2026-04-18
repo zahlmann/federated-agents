@@ -29,6 +29,12 @@ public final class CodexProcessRunner: @unchecked Sendable {
         process.arguments = [
             "exec",
             "--json",
+            "--disable",
+            "plugins",
+            "--disable",
+            "shell_snapshot",
+            "--disable",
+            "general_analytics",
             "--sandbox",
             "workspace-write",
             "--skip-git-repo-check",
@@ -108,6 +114,10 @@ public final class CodexProcessRunner: @unchecked Sendable {
     }
 
     private func handleLine(_ line: String, isErrorStream: Bool) {
+        if shouldIgnoreLogLine(line) {
+            return
+        }
+
         if isErrorStream {
             Task { @MainActor in
                 eventHandler(.rawLine(line))
@@ -148,5 +158,13 @@ public final class CodexProcessRunner: @unchecked Sendable {
         Task { @MainActor in
             eventHandler(.status(type))
         }
+    }
+
+    private func shouldIgnoreLogLine(_ line: String) -> Bool {
+        let ignoredPrefixes = [
+            "Reading additional input from stdin...",
+        ]
+
+        return ignoredPrefixes.contains(where: line.hasPrefix)
     }
 }
