@@ -54,6 +54,32 @@ The app decides:
 
 Codex is intentionally not in charge of any of that.
 
+## How to launch the app during development
+
+There is one practical detail worth knowing up front.
+
+This repo currently builds the receiver through Swift Package Manager, but the app itself is a GUI app.
+
+That means the raw executable under `.build/.../FederatedAgentsReceiver` is not the nicest thing to launch directly.
+
+For normal local testing, the intended command is:
+
+```bash
+./scripts/open_receiver_app.sh
+```
+
+That script does three things:
+
+1. runs `swift build`
+2. wraps the built executable in a minimal `.app` bundle
+3. opens that bundle with macOS
+
+It also kills stale detached receiver processes before launching, because otherwise a hidden old process can make a new launch look like a no-op.
+
+This is a prototype convenience layer.
+
+In a more polished version, you would likely move to a proper Xcode app target or a more formal app packaging flow.
+
 ## The end-to-end flow
 
 Here is the main runtime loop.
@@ -441,6 +467,32 @@ Then `agentctl` returns the answer back to Codex.
 
 That is the entire protocol.
 
+One implementation detail matters here because it bit us once already:
+
+`agentctl` now reads the response JSON from the response file path directly.
+
+That sounds trivial, but it is important.
+
+An earlier version tried to both:
+
+- pipe JSON into Python on stdin
+- and feed the Python program itself over stdin via a here-doc
+
+That is an stdin collision.
+
+The result was flaky behavior where the transport looked broken even when the app had written a correct response file.
+
+The current design is simpler and correct:
+
+1. wait for the response file to exist
+2. pass the file path into Python
+3. parse the file
+4. print the requested field back to Codex
+
+This is a good example of why file-based IPC is nice for prototypes.
+
+When the bridge broke, the fix was to simplify the handoff, not to build a more complicated transport.
+
 ### Why the file-based IPC is good here
 
 Because it is:
@@ -486,7 +538,7 @@ For CSV:
 
 ```sql
 CREATE OR REPLACE VIEW alias AS
-SELECT * FROM read_csv_auto('path', SAMPLE_SIZE=-1);
+SELECT * FROM read_csv_auto('path', SAMPLE_SIZE=-1, delim=',');
 ```
 
 For Parquet:
@@ -505,6 +557,31 @@ That means this is a transient analytical layer, not a persistent local warehous
 Second, the app creates views with sanitized aliases.
 
 That means the agent reasons about logical table names like `people_data`, not arbitrary raw filesystem paths.
+
+There is one more detail now that is worth knowing.
+
+CSV registration is intentionally defensive.
+
+The app does not just assume every file is a clean comma-delimited CSV.
+
+It now:
+
+1. inspects the header line and infers a likely delimiter
+2. tries to register the file with that delimiter
+3. checks the resulting schema
+4. if the schema still collapses into one suspicious column, retries with fallback delimiters such as `,`, `;`, tab, and `|`
+
+That behavior exists because a bad parse is dangerous in a subtle way.
+
+The failure mode is not always "the import crashes."
+
+Sometimes the more dangerous failure mode is:
+
+- the import succeeds
+- but the approved schema is wrong
+- and Codex then reasons over a fake one-column world
+
+The fallback logic is there to prevent that class of failure from silently leaking into the rest of the session.
 
 ### What the agent sees
 
@@ -638,6 +715,44 @@ That is the prototype stand-in for real delivery to the sender.
 This was a good prototype cut.
 
 You want the review boundary in place before you optimize transport.
+
+## How the Activity log should be interpreted
+
+The Activity area in the UI contains two different kinds of information:
+
+- agent messages
+- system log lines
+
+The distinction matters.
+
+### Agent Messages
+
+These are human-readable progress statements that Codex emits as part of its own reasoning flow.
+
+They are useful for understanding what the agent thinks it is doing next.
+
+They are not a source of truth.
+
+Sometimes they describe an intended next step that later fails.
+
+### System Log
+
+This is the receiver-side operational trail.
+
+It includes things like:
+
+- Codex event types
+- app-side failures
+- data source approval messages
+- data source registration errors
+
+If something appears to "do nothing," this is the place to look first.
+
+That log became more important once we started surfacing file-registration failures explicitly.
+
+For example, if a CSV fails to register in DuckDB, the app now logs the error instead of silently leaving the Approved Data section unchanged.
+
+That is a small UX detail, but an important debugging improvement.
 
 ## Why there is both `purpose.md` and `instructions.md`
 
