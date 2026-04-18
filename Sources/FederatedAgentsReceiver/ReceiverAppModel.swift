@@ -106,11 +106,13 @@ final class ReceiverAppModel: ObservableObject {
             for url in panel.urls {
                 let source = try catalog.registerFile(at: url)
                 approvedSources.append(source)
+                logs.append("Approved data source: \(url.lastPathComponent) as \(source.alias)")
             }
 
             sessionStatus = "Approved \(approvedSources.count) data source(s)"
         } catch {
             sessionStatus = error.localizedDescription
+            logs.append("Failed to add data source: \(error.localizedDescription)")
         }
     }
 

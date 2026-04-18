@@ -41,7 +41,7 @@ public final class ApprovedDataCatalog {
             csvDelimiter: csvDelimiter
         )
 
-        try connection.execute(sql)
+        _ = try connection.query(sql)
         let schema = try resolvedSchema(for: kind, alias: alias, fileURL: fileURL, initialDelimiter: csvDelimiter)
 
         let source = ApprovedDataSource(
@@ -170,7 +170,7 @@ public final class ApprovedDataCatalog {
             .filter { $0 != initialDelimiter }
 
         for delimiter in fallbackDelimiters {
-            try connection.execute(
+            _ = try connection.query(
                 registrationSQL(
                     for: kind,
                     alias: alias,

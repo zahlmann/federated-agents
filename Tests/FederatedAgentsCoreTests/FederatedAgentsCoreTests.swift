@@ -74,3 +74,22 @@ func semicolonDelimitedCSVDoesNotCollapseIntoSingleColumnSchema() throws {
         "bonus",
     ])
 }
+
+@Test
+func commaDelimitedCSVRegistersAsExpected() throws {
+    let catalog = try ApprovedDataCatalog()
+    let fixtureURL = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .appendingPathComponent("Fixtures/sample.csv")
+
+    let source = try catalog.registerFile(at: fixtureURL)
+
+    #expect(source.schema.columns.count == 5)
+    #expect(source.schema.columns.map(\.name) == [
+        "department",
+        "level",
+        "location",
+        "base_salary",
+        "bonus",
+    ])
+}
