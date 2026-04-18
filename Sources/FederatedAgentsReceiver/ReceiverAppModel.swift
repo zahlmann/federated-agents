@@ -472,6 +472,15 @@ final class ReceiverAppModel: ObservableObject {
             sessionStatus = message
 
         case .agentMessage(let message):
+            let normalized = message.trimmingCharacters(in: .whitespacesAndNewlines)
+            if normalized.isEmpty {
+                return
+            }
+
+            if agentMessages.last?.trimmingCharacters(in: .whitespacesAndNewlines) == normalized {
+                return
+            }
+
             agentMessages.append(message)
 
         case .finalText(let text):
