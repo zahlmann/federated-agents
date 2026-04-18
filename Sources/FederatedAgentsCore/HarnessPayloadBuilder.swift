@@ -107,6 +107,69 @@ public enum HarnessBinaryLocator {
     }
 }
 
+public enum HarnessEnvironmentLoader {
+    public static let configPath = "~/.config/federated-agents/env"
+    public static let forwardedKeys = ["OPENAI_API_KEY", "OPENAI_PROJECT", "OPENAI_BASE_URL"]
+
+    public static func resolvedEnvironment() -> [String: String] {
+        var environment = ProcessInfo.processInfo.environment
+
+        for (key, value) in loadConfigFile() where environment[key] == nil {
+            environment[key] = value
+        }
+
+        return environment
+    }
+
+    public static func hasOpenAIKey() -> Bool {
+        if let value = ProcessInfo.processInfo.environment["OPENAI_API_KEY"],
+           !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return true
+        }
+
+        return loadConfigFile()["OPENAI_API_KEY"]?.isEmpty == false
+    }
+
+    private static func loadConfigFile() -> [String: String] {
+        let expandedPath = (configPath as NSString).expandingTildeInPath
+        guard FileManager.default.fileExists(atPath: expandedPath),
+              let contents = try? String(contentsOfFile: expandedPath, encoding: .utf8)
+        else {
+            return [:]
+        }
+
+        var result: [String: String] = [:]
+
+        for line in contents.split(whereSeparator: { $0.isNewline }) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty || trimmed.hasPrefix("#") {
+                continue
+            }
+
+            guard let separatorIndex = trimmed.firstIndex(of: "=") else {
+                continue
+            }
+
+            let key = String(trimmed[..<separatorIndex])
+                .trimmingCharacters(in: .whitespaces)
+            var value = String(trimmed[trimmed.index(after: separatorIndex)...])
+                .trimmingCharacters(in: .whitespaces)
+
+            if value.hasPrefix("\"") && value.hasSuffix("\"") && value.count >= 2 {
+                value = String(value.dropFirst().dropLast())
+            } else if value.hasPrefix("'") && value.hasSuffix("'") && value.count >= 2 {
+                value = String(value.dropFirst().dropLast())
+            }
+
+            if !key.isEmpty {
+                result[key] = value
+            }
+        }
+
+        return result
+    }
+}
+
 public struct HarnessOutboundWorkspace: Sendable {
     public let directoryURL: URL
     public let approvedResultURL: URL

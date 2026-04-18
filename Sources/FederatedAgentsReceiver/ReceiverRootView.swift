@@ -60,6 +60,12 @@ struct ReceiverRootView: View {
                 Text("Debug Trace")
                     .font(.headline)
 
+                Text(model.apiKeyStatus)
+                    .font(.caption)
+                    .foregroundStyle(model.apiKeyStatus.hasPrefix("API key: present") ? Color.secondary : Color.red)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+
                 Text(model.harnessBinaryStatus)
                     .font(.caption)
                     .foregroundStyle(.secondary)

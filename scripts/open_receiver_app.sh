@@ -62,4 +62,15 @@ bundle_bridge_path="$macos_dir/receiver-bridge"
 rm -f "$bundle_bridge_path"
 ln -s "$bridge_binary_path" "$bundle_bridge_path"
 
-open "$app_bundle"
+open_args=()
+if [[ -n "${OPENAI_API_KEY:-}" ]]; then
+  open_args+=(--env "OPENAI_API_KEY=$OPENAI_API_KEY")
+fi
+if [[ -n "${OPENAI_PROJECT:-}" ]]; then
+  open_args+=(--env "OPENAI_PROJECT=$OPENAI_PROJECT")
+fi
+if [[ -n "${OPENAI_BASE_URL:-}" ]]; then
+  open_args+=(--env "OPENAI_BASE_URL=$OPENAI_BASE_URL")
+fi
+
+open "${open_args[@]}" "$app_bundle"

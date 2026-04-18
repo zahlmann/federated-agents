@@ -26,6 +26,7 @@ final class ReceiverAppModel: ObservableObject {
     @Published var lastDispatchLocation: String?
     @Published var traceEntries: [TraceEntry] = []
     @Published var harnessBinaryStatus: String = "Harness binary: not located"
+    @Published var apiKeyStatus: String = "API key: unknown"
 
     private let packageLoader = AgentPackageLoader()
     private let privacyEngine = PrototypePrivacyEngine()
@@ -38,6 +39,7 @@ final class ReceiverAppModel: ObservableObject {
 
     init() {
         refreshHarnessBinaryStatus()
+        refreshAPIKeyStatus()
     }
 
     func loadBundledSample() {
@@ -147,10 +149,23 @@ final class ReceiverAppModel: ObservableObject {
             return
         }
 
+        refreshAPIKeyStatus()
+        let resolvedEnvironment = HarnessEnvironmentLoader.resolvedEnvironment()
+
+        guard let apiKey = resolvedEnvironment["OPENAI_API_KEY"],
+              !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            sessionStatus = "OPENAI_API_KEY missing. Export it in your shell and relaunch with scripts/open_receiver_app.sh, or write it to ~/.config/federated-agents/env."
+            return
+        }
+
         do {
             let outboundWorkspace = try HarnessOutboundWorkspaceFactory.make(packageID: package.id)
 
-            let runner = HarnessProcessRunner(binaryURL: binaryURL) { [weak self] event in
+            let runner = HarnessProcessRunner(
+                binaryURL: binaryURL,
+                environment: resolvedEnvironment
+            ) { [weak self] event in
                 self?.handle(event: event)
             }
 
@@ -266,6 +281,14 @@ final class ReceiverAppModel: ObservableObject {
             harnessBinaryStatus = "Harness binary: \(binaryURL.path)"
         } else {
             harnessBinaryStatus = "Harness binary: not located. Set RECEIVER_HARNESS_BIN or run `scripts/open_receiver_app.sh`."
+        }
+    }
+
+    private func refreshAPIKeyStatus() {
+        if HarnessEnvironmentLoader.hasOpenAIKey() {
+            apiKeyStatus = "API key: present"
+        } else {
+            apiKeyStatus = "API key: missing. Export OPENAI_API_KEY and relaunch, or write KEY=VALUE to ~/.config/federated-agents/env."
         }
     }
 
