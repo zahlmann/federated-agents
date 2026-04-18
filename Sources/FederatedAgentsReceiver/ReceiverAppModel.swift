@@ -27,6 +27,7 @@ final class ReceiverAppModel: ObservableObject {
     @Published var traceEntries: [TraceEntry] = []
     @Published var harnessBinaryStatus: String = "Harness binary: not located"
     @Published var apiKeyStatus: String = "API key: unknown"
+    @Published var traceLogPath: String?
 
     private let packageLoader = AgentPackageLoader()
     private let privacyEngine = PrototypePrivacyEngine()
@@ -161,10 +162,14 @@ final class ReceiverAppModel: ObservableObject {
 
         do {
             let outboundWorkspace = try HarnessOutboundWorkspaceFactory.make(packageID: package.id)
+            let traceLogURL = HarnessTraceLog.makeSessionLogURL(packageID: package.id)
+            HarnessTraceLog.refreshLatestSymlink(pointingAt: traceLogURL)
+            self.traceLogPath = traceLogURL.path
 
             let runner = HarnessProcessRunner(
                 binaryURL: binaryURL,
-                environment: resolvedEnvironment
+                environment: resolvedEnvironment,
+                traceLogURL: traceLogURL
             ) { [weak self] event in
                 self?.handle(event: event)
             }

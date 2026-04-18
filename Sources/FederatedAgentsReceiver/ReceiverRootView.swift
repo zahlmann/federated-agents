@@ -56,21 +56,32 @@ struct ReceiverRootView: View {
 
     private var debugTraceSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 12) {
-                Text("Debug Trace")
-                    .font(.headline)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 12) {
+                    Text("Debug Trace")
+                        .font(.headline)
 
-                Text(model.apiKeyStatus)
-                    .font(.caption)
-                    .foregroundStyle(model.apiKeyStatus.hasPrefix("API key: present") ? Color.secondary : Color.red)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+                    Text(model.apiKeyStatus)
+                        .font(.caption)
+                        .foregroundStyle(model.apiKeyStatus.hasPrefix("API key: present") ? Color.secondary : Color.red)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
 
-                Text(model.harnessBinaryStatus)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                    Text(model.harnessBinaryStatus)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+
+                if let path = model.traceLogPath {
+                    Text("Trace log: \(path)")
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .lineLimit(1)
+                        .truncationMode(.head)
+                }
             }
             .padding(.horizontal, 12)
             .padding(.top, 8)

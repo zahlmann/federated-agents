@@ -123,20 +123,25 @@ public final class HarnessProcessRunner: @unchecked Sendable {
     private let binaryURL: URL
     private let environment: [String: String]?
     private let eventHandler: EventHandler
+    private let traceLogURL: URL?
 
     private var process: Process?
     private var stdinHandle: FileHandle?
     private var stdoutBuffer = Data()
     private var stderrBuffer = Data()
     private let writeQueue = DispatchQueue(label: "com.federated-agents.harness.stdin")
+    private let traceQueue = DispatchQueue(label: "com.federated-agents.harness.tracelog")
+    private var traceLogHandle: FileHandle?
 
     public init(
         binaryURL: URL,
         environment: [String: String]? = nil,
+        traceLogURL: URL? = nil,
         eventHandler: @escaping EventHandler
     ) {
         self.binaryURL = binaryURL
         self.environment = environment
+        self.traceLogURL = traceLogURL
         self.eventHandler = eventHandler
     }
 
@@ -148,6 +153,15 @@ public final class HarnessProcessRunner: @unchecked Sendable {
         guard FileManager.default.isExecutableFile(atPath: binaryURL.path) else {
             throw HarnessProcessRunnerError.binaryNotFound(binaryURL)
         }
+
+        openTraceLog()
+        appendTraceMeta(kind: "session_start", data: [
+            "binary": binaryURL.path,
+            "model": payload.model,
+            "reasoningEffort": payload.reasoningEffort,
+            "packageMarkdown": payload.packageMarkdown,
+            "schemaMarkdown": payload.schemaMarkdown,
+        ])
 
         let process = Process()
         process.executableURL = binaryURL
@@ -184,6 +198,11 @@ public final class HarnessProcessRunner: @unchecked Sendable {
         }
 
         process.terminationHandler = { [weak self] finished in
+            self?.appendTraceMeta(kind: "session_end", data: [
+                "exitCode": Int(finished.terminationStatus),
+            ])
+            self?.closeTraceLog()
+
             Task { @MainActor in
                 self?.eventHandler(.finished(finished.terminationStatus))
             }
@@ -208,6 +227,8 @@ public final class HarnessProcessRunner: @unchecked Sendable {
         process?.terminate()
         process = nil
         stdinHandle = nil
+        appendTraceMeta(kind: "stop_requested", data: [:])
+        closeTraceLog()
     }
 
     public func sendToolResponse(
@@ -255,6 +276,8 @@ public final class HarnessProcessRunner: @unchecked Sendable {
         try writeQueue.sync {
             try stdinHandle?.write(contentsOf: line)
         }
+
+        appendTraceLine(direction: "swift_to_bridge", raw: data)
     }
 
     private func consumeStdout(_ data: Data) {
@@ -268,7 +291,9 @@ public final class HarnessProcessRunner: @unchecked Sendable {
                 continue
             }
 
-            handleOutboundLine(Data(lineData))
+            let dataCopy = Data(lineData)
+            appendTraceLine(direction: "bridge_to_swift", raw: dataCopy)
+            handleOutboundLine(dataCopy)
         }
     }
 
@@ -284,6 +309,7 @@ public final class HarnessProcessRunner: @unchecked Sendable {
             }
 
             let line = String(decoding: lineData, as: UTF8.self)
+            appendTraceMeta(kind: "bridge_stderr", data: ["line": line])
             Task { @MainActor in
                 eventHandler(.rawLine("[stderr] " + line))
             }
@@ -369,6 +395,87 @@ public final class HarnessProcessRunner: @unchecked Sendable {
             Task { @MainActor in
                 eventHandler(.rawLine(text))
             }
+        }
+    }
+
+    private func openTraceLog() {
+        guard let traceLogURL else {
+            return
+        }
+
+        traceQueue.sync {
+            let fileManager = FileManager.default
+
+            do {
+                try fileManager.createDirectory(
+                    at: traceLogURL.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+
+                if !fileManager.fileExists(atPath: traceLogURL.path) {
+                    fileManager.createFile(atPath: traceLogURL.path, contents: nil)
+                }
+
+                traceLogHandle = try FileHandle(forWritingTo: traceLogURL)
+                try traceLogHandle?.seekToEnd()
+            } catch {
+                traceLogHandle = nil
+            }
+        }
+    }
+
+    private func closeTraceLog() {
+        traceQueue.sync {
+            try? traceLogHandle?.close()
+            traceLogHandle = nil
+        }
+    }
+
+    private func appendTraceLine(direction: String, raw: Data) {
+        guard traceLogURL != nil else {
+            return
+        }
+
+        let payload = String(decoding: raw, as: UTF8.self)
+        let wrapper: [String: Any] = [
+            "direction": direction,
+            "recordedAt": ISO8601DateFormatter().string(from: Date()),
+            "payload": payload,
+        ]
+
+        guard let encoded = try? JSONSerialization.data(withJSONObject: wrapper, options: [.sortedKeys]) else {
+            return
+        }
+
+        writeTraceBytes(encoded)
+    }
+
+    private func appendTraceMeta(kind: String, data: [String: Any]) {
+        guard traceLogURL != nil else {
+            return
+        }
+
+        var payload = data
+        payload["direction"] = "meta"
+        payload["kind"] = kind
+        payload["recordedAt"] = ISO8601DateFormatter().string(from: Date())
+
+        guard let encoded = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]) else {
+            return
+        }
+
+        writeTraceBytes(encoded)
+    }
+
+    private func writeTraceBytes(_ data: Data) {
+        traceQueue.async { [weak self] in
+            guard let self, let handle = self.traceLogHandle else {
+                return
+            }
+
+            var line = data
+            line.append(0x0A)
+            try? handle.write(contentsOf: line)
         }
     }
 

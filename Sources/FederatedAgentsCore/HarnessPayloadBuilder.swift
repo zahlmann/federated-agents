@@ -175,6 +175,54 @@ public struct HarnessOutboundWorkspace: Sendable {
     public let approvedResultURL: URL
 }
 
+public enum HarnessTraceLog {
+    public static func directoryURL() -> URL {
+        let base = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+
+        return base
+            .appendingPathComponent("Logs", isDirectory: true)
+            .appendingPathComponent("federated-agents", isDirectory: true)
+    }
+
+    public static func makeSessionLogURL(packageID: String) -> URL {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd'T'HHmmss"
+        formatter.timeZone = TimeZone(identifier: "UTC")
+
+        let timestamp = formatter.string(from: Date())
+        let filename = "\(timestamp)-\(packageID).ndjson"
+
+        return directoryURL().appendingPathComponent(filename)
+    }
+
+    public static func latestLogURL() -> URL {
+        directoryURL().appendingPathComponent("latest.ndjson")
+    }
+
+    public static func refreshLatestSymlink(pointingAt target: URL) {
+        let latest = latestLogURL()
+        let fileManager = FileManager.default
+
+        do {
+            try fileManager.createDirectory(
+                at: directoryURL(),
+                withIntermediateDirectories: true
+            )
+
+            if fileManager.fileExists(atPath: latest.path) ||
+               (try? latest.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true {
+                try fileManager.removeItem(at: latest)
+            }
+
+            try fileManager.createSymbolicLink(at: latest, withDestinationURL: target)
+        } catch {
+            // Best effort — if the symlink can't be created we still have the real log file.
+        }
+    }
+}
+
 public enum HarnessOutboundWorkspaceFactory {
     public static func make(packageID: String) throws -> HarnessOutboundWorkspace {
         let root = FileManager.default.temporaryDirectory
