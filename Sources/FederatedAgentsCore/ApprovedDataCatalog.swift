@@ -33,10 +33,16 @@ public final class ApprovedDataCatalog {
     ) throws -> ApprovedDataSource {
         let kind = dataSourceKind(for: fileURL)
         let alias = makeAlias(from: preferredAlias ?? fileURL.deletingPathExtension().lastPathComponent)
-        let sql = registrationSQL(for: kind, alias: alias, fileURL: fileURL)
+        let csvDelimiter = kind == .csv ? inferredCSVDelimiter(for: fileURL) : nil
+        let sql = registrationSQL(
+            for: kind,
+            alias: alias,
+            fileURL: fileURL,
+            csvDelimiter: csvDelimiter
+        )
 
         try connection.execute(sql)
-        let schema = try describe(alias: alias)
+        let schema = try resolvedSchema(for: kind, alias: alias, fileURL: fileURL, initialDelimiter: csvDelimiter)
 
         let source = ApprovedDataSource(
             id: UUID(),
@@ -118,15 +124,25 @@ public final class ApprovedDataCatalog {
     private func registrationSQL(
         for kind: DataSourceKind,
         alias: String,
-        fileURL: URL
+        fileURL: URL,
+        csvDelimiter: String?
     ) -> String {
         let safePath = fileURL.path.replacingOccurrences(of: "'", with: "''")
 
         switch kind {
         case .csv:
+            let delimiterClause: String
+
+            if let csvDelimiter {
+                let escapedDelimiter = csvDelimiter.replacingOccurrences(of: "'", with: "''")
+                delimiterClause = ", delim='\(escapedDelimiter)'"
+            } else {
+                delimiterClause = ""
+            }
+
             return """
             CREATE OR REPLACE VIEW \(quoteIdentifier(alias)) AS
-            SELECT * FROM read_csv_auto('\(safePath)', SAMPLE_SIZE=-1);
+            SELECT * FROM read_csv_auto('\(safePath)', SAMPLE_SIZE=-1\(delimiterClause));
             """
         case .parquet:
             return """
@@ -136,6 +152,40 @@ public final class ApprovedDataCatalog {
         case .database:
             return ""
         }
+    }
+
+    private func resolvedSchema(
+        for kind: DataSourceKind,
+        alias: String,
+        fileURL: URL,
+        initialDelimiter: String?
+    ) throws -> DataSourceSchema {
+        let initialSchema = try describe(alias: alias)
+
+        guard kind == .csv, initialSchema.columns.count <= 1 else {
+            return initialSchema
+        }
+
+        let fallbackDelimiters = [",", ";", "\t", "|"]
+            .filter { $0 != initialDelimiter }
+
+        for delimiter in fallbackDelimiters {
+            try connection.execute(
+                registrationSQL(
+                    for: kind,
+                    alias: alias,
+                    fileURL: fileURL,
+                    csvDelimiter: delimiter
+                )
+            )
+
+            let fallbackSchema = try describe(alias: alias)
+            if fallbackSchema.columns.count > initialSchema.columns.count {
+                return fallbackSchema
+            }
+        }
+
+        return initialSchema
     }
 
     private func describe(alias: String) throws -> DataSourceSchema {
@@ -174,6 +224,34 @@ public final class ApprovedDataCatalog {
         default:
             .database
         }
+    }
+
+    private func inferredCSVDelimiter(for fileURL: URL) -> String? {
+        guard let data = try? Data(contentsOf: fileURL),
+              let content = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .utf16)
+        else {
+            return nil
+        }
+
+        guard let headerLine = content
+            .components(separatedBy: .newlines)
+            .first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
+        else {
+            return nil
+        }
+
+        let candidates = [",", ";", "\t", "|"]
+        let bestMatch = candidates
+            .map { delimiter in
+                (delimiter: delimiter, count: headerLine.components(separatedBy: delimiter).count - 1)
+            }
+            .max { lhs, rhs in lhs.count < rhs.count }
+
+        guard let bestMatch, bestMatch.count > 0 else {
+            return nil
+        }
+
+        return bestMatch.delimiter
     }
 
     private func makeAlias(from value: String) -> String {
