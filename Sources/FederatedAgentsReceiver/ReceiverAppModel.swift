@@ -244,7 +244,7 @@ final class ReceiverAppModel: ObservableObject {
 
     func loadBundledSample() {
         guard let sampleURL = Bundle.module.url(
-            forResource: "BrightlineRetentionTargeting",
+            forResource: "CardiacReadmissionStudy",
             withExtension: "fagent",
             subdirectory: "Resources/Samples"
         ) else {

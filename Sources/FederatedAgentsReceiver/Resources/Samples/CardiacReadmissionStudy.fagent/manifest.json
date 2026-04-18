@@ -1,0 +1,50 @@
+{
+  "packageID" : "cardiac-readmission-study",
+  "title" : "Cardiac 30-day readmission study design",
+  "summary" : "The Vienna Cardiac Research Consortium wants a privacy-safe segment-level view of 30-day readmissions to help shape an upcoming multi-site study. The hospital (receiver) chooses the segmentation and minimum cell size; the sender never sees rows.",
+  "sender" : {
+    "name" : "Dr. Elena Marchetti",
+    "email" : "marchetti@vienna-cardiac-research.example",
+    "organization" : "Vienna Cardiac Research Consortium"
+  },
+  "expiresAt" : "2099-06-01T18:00:00Z",
+  "callbackURL" : null,
+  "purposeFile" : "purpose.md",
+  "instructionsFile" : "instructions.md",
+  "signingPayloadFile" : "signing-payload.json",
+  "signature" : {
+    "algorithm" : "ed25519",
+    "publicKeyBase64" : "UGoBkEJROqt4AaBKlcIUHHGcT6aCBlgSV1APp/YPKsI=",
+    "signatureBase64" : "c93rhxp3rZ1kOzTJZf/M/wZfmaVAkYLI0OzjTCT0TlIhEyMsHXYdvO44pqg7yLgyvp56/Nu1u0JcpgyRhiJTDQ=="
+  },
+  "requestedCapabilities" : [
+    {
+      "id" : "ask-followups",
+      "kind" : "askFollowUpQuestions",
+      "reason" : "The hospital must pick the segmentation dimension and minimum cell size before any numbers are produced.",
+      "required" : true
+    },
+    {
+      "id" : "analyze-csv",
+      "kind" : "analyzeCSV",
+      "reason" : "The request expects the hospital's cardiac admissions CSV for the last 18 months.",
+      "required" : true
+    },
+    {
+      "id" : "send-approved",
+      "kind" : "sendApprovedResult",
+      "reason" : "The final segment-level report is staged for hospital approval before it leaves the device.",
+      "required" : true
+    }
+  ],
+  "questions" : [],
+  "outputContract" : {
+    "description" : "Privacy-safe segment-level readmission report for the research consortium.",
+    "topLevelFields" : [
+      "request_id",
+      "method",
+      "segments",
+      "findings"
+    ]
+  }
+}

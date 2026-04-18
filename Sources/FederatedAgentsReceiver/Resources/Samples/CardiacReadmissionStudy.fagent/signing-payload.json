@@ -1,0 +1,14 @@
+{
+  "packageID": "cardiac-readmission-study",
+  "expiresAt": "2099-06-01T18:00:00Z",
+  "trackedFiles": [
+    {
+      "path": "purpose.md",
+      "sha256": "f16d2b750e0bd29b6276aa7a7851e5f9c54767f6c96ae5fe8351df01bcca9a35"
+    },
+    {
+      "path": "instructions.md",
+      "sha256": "24dae0f88baeb716dfea678e642c2bd12341a4f83646ed106afc01a23e6a8852"
+    }
+  ]
+}

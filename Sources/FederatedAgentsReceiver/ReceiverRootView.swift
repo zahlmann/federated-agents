@@ -1,3 +1,4 @@
+import AppKit
 import FederatedAgentsCore
 import SwiftUI
 
@@ -163,24 +164,47 @@ struct ReceiverRootView: View {
     }
 
     private var packageHeader: some View {
-        GroupBox("Request") {
-            VStack(alignment: .leading, spacing: 12) {
-                Text(model.loadedPackage?.title ?? "No packaged request loaded")
-                    .font(.title2.weight(.semibold))
+        VStack(alignment: .leading, spacing: 10) {
+            Text(model.loadedPackage?.title ?? "No packaged request loaded")
+                .font(.largeTitle.weight(.bold))
 
-                Text(model.packageSummaryMessage)
-                    .foregroundStyle(.secondary)
+            Text(model.packageSummaryMessage)
+                .font(.title3)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
-                if let package = model.loadedPackage {
-                    Label("Sender: \(package.sender.name) <\(package.sender.email)>", systemImage: "person.crop.rectangle")
-                    Label("Verification: \(model.verificationMessage)", systemImage: "checkmark.shield")
-                    Label("Expires: \(package.expiresAt.formatted(date: .abbreviated, time: .shortened))", systemImage: "clock")
+            if let package = model.loadedPackage {
+                HStack(spacing: 16) {
+                    Label {
+                        Text("\(package.sender.name)")
+                            .fontWeight(.medium) + Text(" <\(package.sender.email)>").foregroundStyle(.secondary)
+                    } icon: {
+                        Image(systemName: "person.crop.rectangle")
+                    }
+                    .font(.callout)
+
+                    Label {
+                        Text(model.verificationMessage)
+                    } icon: {
+                        Image(systemName: "checkmark.shield")
+                    }
+                    .font(.callout)
+                    .foregroundStyle(verificationColor(for: package))
+
+                    Label(package.expiresAt.formatted(date: .abbreviated, time: .shortened), systemImage: "clock")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
                 }
-
-                Text("Status: \(model.sessionStatus)")
-                    .font(.callout.weight(.medium))
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func verificationColor(for package: AgentPackage) -> Color {
+        switch package.verification.status {
+        case .verified: return .green
+        case .unsigned: return .orange
+        case .invalid: return .red
         }
     }
 
@@ -254,11 +278,11 @@ struct ReceiverRootView: View {
     }
 
     private var reviewSection: some View {
-        GroupBox("Outbound Review") {
-            VStack(alignment: .leading, spacing: 12) {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 14) {
                 if let draft = model.stagedOutbound {
                     Text(draft.summary)
-                        .font(.headline)
+                        .font(.title3.weight(.semibold))
 
                     ScrollView(.horizontal) {
                         Text(draft.payload)
@@ -268,14 +292,23 @@ struct ReceiverRootView: View {
                     }
                     .frame(minHeight: 180)
 
-                    HStack {
-                        Button("Approve & Save") {
+                    HStack(spacing: 12) {
+                        Button {
                             model.approveOutboundDraft()
+                        } label: {
+                            Label("Approve & Save", systemImage: "checkmark.circle.fill")
+                                .font(.body.weight(.medium))
                         }
+                        .controlSize(.large)
+                        .buttonStyle(.borderedProminent)
 
-                        Button("Reject") {
+                        Button(role: .destructive) {
                             model.rejectOutboundDraft()
+                        } label: {
+                            Label("Reject", systemImage: "xmark.circle.fill")
+                                .font(.body.weight(.medium))
                         }
+                        .controlSize(.large)
                     }
 
                     if let lastDispatchLocation = model.lastDispatchLocation {
@@ -288,6 +321,9 @@ struct ReceiverRootView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+        } label: {
+            Text("Outbound Review")
+                .font(.headline)
         }
     }
 
