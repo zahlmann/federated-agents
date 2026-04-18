@@ -135,6 +135,19 @@ public final class InboxWatcher {
             return nil
         }
 
+        let requiredFiles: [String] = [
+            manifest.purposeFile,
+            manifest.instructionsFile,
+            manifest.signingPayloadFile,
+        ].compactMap { $0 }
+
+        for relativePath in requiredFiles {
+            let fileURL = packageURL.appendingPathComponent(relativePath)
+            if !FileManager.default.isReadableFile(atPath: fileURL.path) {
+                return nil
+            }
+        }
+
         let arrived = (try? packageURL.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? Date()
 
         return IncomingInvitation(

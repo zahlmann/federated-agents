@@ -61,6 +61,11 @@ EOF
 
 cp "$repo_root/Sources/FederatedAgentsReceiver/Resources/AppIcon/AppIcon.icns" "$resources_dir/AppIcon.icns"
 
+# Force macOS Launch Services to re-read the bundle so the icon and display name refresh.
+touch "$app_bundle"
+/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister \
+  -f "$app_bundle" >/dev/null 2>&1 || true
+
 rm -f "$bundle_binary_path"
 ln -s "$binary_path" "$bundle_binary_path"
 

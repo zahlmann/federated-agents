@@ -255,6 +255,7 @@ final class ReceiverAppModel: ObservableObject {
     }
 
     func acceptInvitation(_ invitation: IncomingInvitation) {
+        logs.append("Accepted invitation \(invitation.id)")
         loadPackage(at: invitation.packageURL)
         pendingInvitations.removeAll { $0.id == invitation.id }
     }
@@ -270,6 +271,7 @@ final class ReceiverAppModel: ObservableObject {
 
         try? FileManager.default.moveItem(at: invitation.packageURL, to: destination)
         pendingInvitations.removeAll { $0.id == invitation.id }
+        logs.append("Dismissed invitation \(invitation.id)")
     }
 
     private func receiveInvitation(_ invitation: IncomingInvitation) {
@@ -277,6 +279,8 @@ final class ReceiverAppModel: ObservableObject {
             return
         }
 
+        sessionStatus = "Incoming request from \(invitation.senderName): \(invitation.title)"
+        logs.append("Inbox delivered \(invitation.id) from \(invitation.senderName)")
         pendingInvitations.append(invitation)
     }
 
