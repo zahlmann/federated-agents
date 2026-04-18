@@ -294,10 +294,11 @@ func askUserToolDefinition() ToolDefinition {
 			map[string]any{
 				"title":       stringSchema("Short title for the question card."),
 				"prompt":      stringSchema("The full question to show the receiver."),
-				"placeholder": stringSchema("Optional answer hint."),
+				"placeholder": stringSchema("Optional answer hint. Pass an empty string when none."),
 			},
 			"title",
 			"prompt",
+			"placeholder",
 		),
 		Strict: boolPointer(true),
 	}
@@ -311,9 +312,10 @@ func safeQueryToolDefinition() ToolDefinition {
 		Parameters: objectSchema(
 			map[string]any{
 				"sql": stringSchema("Aggregate-safe SQL to evaluate."),
-				"why": stringSchema("One short sentence explaining why this query is needed."),
+				"why": stringSchema("One short sentence explaining why this query is needed. Pass an empty string when not applicable."),
 			},
 			"sql",
+			"why",
 		),
 		Strict: boolPointer(true),
 	}
