@@ -64,6 +64,14 @@ swift build
 swift run FederatedAgentsReceiver
 ```
 
+For a normal macOS app launch experience, use:
+
+```bash
+./scripts/open_receiver_app.sh
+```
+
+The raw executable in `.build/.../FederatedAgentsReceiver` is not a full `.app` bundle, so launching it directly from the shell can leave you with a running process and no obvious app window.
+
 ## Open questions left for the next pass
 
 - real Qrlew integration instead of the aggregate-only gate
