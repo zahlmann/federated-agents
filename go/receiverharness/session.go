@@ -1,11 +1,38 @@
 package receiverharness
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
 )
+
+// decodeFunctionArguments unmarshals a function call's arguments into target.
+// The OpenAI Responses API returns function_call.arguments as a JSON-encoded
+// string (e.g. "\"{\\\"key\\\":1}\""). Older tests also pass raw JSON objects.
+// We support both shapes.
+func decodeFunctionArguments(raw json.RawMessage, target any) error {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 {
+		return fmt.Errorf("empty function arguments")
+	}
+
+	if trimmed[0] == '"' {
+		var unwrapped string
+		if err := json.Unmarshal(trimmed, &unwrapped); err != nil {
+			return fmt.Errorf("unwrap stringified arguments: %w", err)
+		}
+
+		if strings.TrimSpace(unwrapped) == "" {
+			return fmt.Errorf("empty function arguments")
+		}
+
+		return json.Unmarshal([]byte(unwrapped), target)
+	}
+
+	return json.Unmarshal(trimmed, target)
+}
 
 const DefaultModel = "gpt-5.4"
 
@@ -81,7 +108,7 @@ func NewReceiverToolRegistry(callbacks ReceiverCallbacks) *ToolRegistry {
 			Message string `json:"message"`
 		}
 
-		if err := json.Unmarshal(call.Arguments, &args); err != nil {
+		if err := decodeFunctionArguments(call.Arguments, &args); err != nil {
 			return nil, fmt.Errorf("decode send_message arguments: %w", err)
 		}
 
@@ -106,7 +133,7 @@ func NewReceiverToolRegistry(callbacks ReceiverCallbacks) *ToolRegistry {
 			Placeholder string `json:"placeholder"`
 		}
 
-		if err := json.Unmarshal(call.Arguments, &args); err != nil {
+		if err := decodeFunctionArguments(call.Arguments, &args); err != nil {
 			return nil, fmt.Errorf("decode ask_user arguments: %w", err)
 		}
 
@@ -130,7 +157,7 @@ func NewReceiverToolRegistry(callbacks ReceiverCallbacks) *ToolRegistry {
 			Why string `json:"why"`
 		}
 
-		if err := json.Unmarshal(call.Arguments, &args); err != nil {
+		if err := decodeFunctionArguments(call.Arguments, &args); err != nil {
 			return nil, fmt.Errorf("decode run_safe_query arguments: %w", err)
 		}
 
@@ -147,7 +174,7 @@ func NewReceiverToolRegistry(callbacks ReceiverCallbacks) *ToolRegistry {
 			Payload string `json:"payload"`
 		}
 
-		if err := json.Unmarshal(call.Arguments, &args); err != nil {
+		if err := decodeFunctionArguments(call.Arguments, &args); err != nil {
 			return nil, fmt.Errorf("decode submit_result arguments: %w", err)
 		}
 
