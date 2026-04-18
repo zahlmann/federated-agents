@@ -88,6 +88,49 @@ public struct ApprovedDataSource: Identifiable, Sendable {
     public let kind: DataSourceKind
     public let url: URL
     public let schema: DataSourceSchema
+    public let displayName: String
+
+    public init(
+        id: UUID,
+        alias: String,
+        kind: DataSourceKind,
+        url: URL,
+        schema: DataSourceSchema,
+        displayName: String? = nil
+    ) {
+        self.id = id
+        self.alias = alias
+        self.kind = kind
+        self.url = url
+        self.schema = schema
+        self.displayName = displayName ?? url.lastPathComponent
+    }
+}
+
+public struct PostgresConnectionConfig: Sendable, Hashable {
+    public let host: String
+    public let port: Int
+    public let database: String
+    public let user: String
+    public let password: String
+    public let table: String
+
+    public init(host: String, port: Int, database: String, user: String, password: String, table: String) {
+        self.host = host
+        self.port = port
+        self.database = database
+        self.user = user
+        self.password = password
+        self.table = table
+    }
+
+    public var attachString: String {
+        "host=\(host) port=\(port) dbname=\(database) user=\(user) password=\(password)"
+    }
+
+    public var publicDisplayName: String {
+        "postgres://\(host):\(port)/\(database)#\(table)"
+    }
 }
 
 public enum DataSourceKind: String, Codable, Sendable {

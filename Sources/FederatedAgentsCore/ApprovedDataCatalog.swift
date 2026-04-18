@@ -4,6 +4,7 @@ import Foundation
 public enum ApprovedDataCatalogError: LocalizedError {
     case unsupportedFileType(URL)
     case missingSource(String)
+    case postgresExtensionUnavailable(String)
 
     public var errorDescription: String? {
         switch self {
@@ -11,6 +12,8 @@ public enum ApprovedDataCatalogError: LocalizedError {
             "Unsupported data source type: \(url.lastPathComponent)"
         case .missingSource(let alias):
             "The approved source \(alias) is missing."
+        case .postgresExtensionUnavailable(let detail):
+            "The Postgres extension could not be loaded. \(detail)"
         }
     }
 }
@@ -20,10 +23,69 @@ public final class ApprovedDataCatalog {
 
     private let database: Database
     private let connection: Connection
+    private var postgresExtensionLoaded = false
 
     public init() throws {
         database = try Database(store: .inMemory)
         connection = try database.connect()
+    }
+
+    @discardableResult
+    public func registerPostgresTable(
+        _ config: PostgresConnectionConfig,
+        alias preferredAlias: String? = nil
+    ) throws -> ApprovedDataSource {
+        try ensurePostgresExtension()
+
+        let alias = makeAlias(from: preferredAlias ?? config.table)
+        let attachAlias = "pg_\(alias)"
+
+        _ = try connection.query(
+            "ATTACH IF NOT EXISTS '\(escape(config.attachString))' AS \(quoteIdentifier(attachAlias)) (TYPE POSTGRES, READ_ONLY)"
+        )
+
+        _ = try connection.query(
+            """
+            CREATE OR REPLACE VIEW \(quoteIdentifier(alias)) AS
+            SELECT * FROM \(quoteIdentifier(attachAlias)).\(quoteIdentifier("public")).\(quoteIdentifier(config.table))
+            """
+        )
+
+        let schema = try describe(alias: alias)
+        let syntheticURL = URL(string: "postgres://\(config.host):\(config.port)/\(config.database)#\(config.table)")
+            ?? URL(fileURLWithPath: "/postgres/\(config.database)")
+
+        let source = ApprovedDataSource(
+            id: UUID(),
+            alias: alias,
+            kind: .database,
+            url: syntheticURL,
+            schema: schema,
+            displayName: config.publicDisplayName
+        )
+
+        sources.append(source)
+        return source
+    }
+
+    private func ensurePostgresExtension() throws {
+        if postgresExtensionLoaded {
+            return
+        }
+
+        do {
+            _ = try connection.query("INSTALL postgres")
+            _ = try connection.query("LOAD postgres")
+            postgresExtensionLoaded = true
+        } catch {
+            throw ApprovedDataCatalogError.postgresExtensionUnavailable(
+                "Make sure this machine has internet access the first time a Postgres source is added so DuckDB can fetch its postgres extension. Underlying error: \(error.localizedDescription)"
+            )
+        }
+    }
+
+    private func escape(_ value: String) -> String {
+        value.replacingOccurrences(of: "'", with: "''")
     }
 
     @discardableResult

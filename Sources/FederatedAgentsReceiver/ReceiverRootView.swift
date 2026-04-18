@@ -4,6 +4,8 @@ import SwiftUI
 
 struct ReceiverRootView: View {
     @EnvironmentObject private var model: ReceiverAppModel
+    @State private var showingPostgresSheet = false
+    @State private var showingDetailsSheet = false
 
     var body: some View {
         NavigationSplitView {
@@ -55,7 +57,17 @@ struct ReceiverRootView: View {
                     Button {
                         model.addDataSource()
                     } label: {
-                        Label("Add Data Source", systemImage: "plus.circle")
+                        Label("Add CSV / Parquet", systemImage: "plus.circle")
+                            .font(.body.weight(.medium))
+                            .padding(.vertical, 4)
+                    }
+                    .controlSize(.large)
+                    .disabled(model.loadedPackage == nil)
+
+                    Button {
+                        showingPostgresSheet = true
+                    } label: {
+                        Label("Add Postgres", systemImage: "cylinder.split.1x2")
                             .font(.body.weight(.medium))
                             .padding(.vertical, 4)
                     }
@@ -97,6 +109,11 @@ struct ReceiverRootView: View {
         } label: {
             Text("Session")
                 .font(.headline)
+        }
+        .sheet(isPresented: $showingPostgresSheet) {
+            PostgresConnectionSheet { config in
+                model.addPostgresSource(config)
+            }
         }
     }
 
@@ -194,10 +211,31 @@ struct ReceiverRootView: View {
                     Label(package.expiresAt.formatted(date: .abbreviated, time: .shortened), systemImage: "clock")
                         .font(.callout)
                         .foregroundStyle(.secondary)
+
+                    Button {
+                        showingDetailsSheet = true
+                    } label: {
+                        Label("View full request", systemImage: "doc.text.magnifyingglass")
+                            .font(.callout.weight(.medium))
+                    }
+                    .buttonStyle(.bordered)
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .sheet(isPresented: $showingDetailsSheet) {
+            if let package = model.loadedPackage {
+                RequestDetailsSheet(package: package)
+            }
+        }
+    }
+
+    private func icon(for kind: DataSourceKind) -> String {
+        switch kind {
+        case .csv: return "tablecells"
+        case .parquet: return "tablecells.badge.ellipsis"
+        case .database: return "cylinder.split.1x2"
+        }
     }
 
     private func verificationColor(for package: AgentPackage) -> Color {
@@ -244,9 +282,22 @@ struct ReceiverRootView: View {
                 } else {
                     ForEach(model.approvedSources) { source in
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("\(source.alias) · \(source.kind.title)")
-                                .font(.headline)
-                            Text(source.url.lastPathComponent)
+                            HStack {
+                                Image(systemName: icon(for: source.kind))
+                                    .foregroundStyle(.tint)
+                                Text(source.alias)
+                                    .font(.headline)
+                                Text(source.kind.title)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .fill(Color.secondary.opacity(0.15))
+                                    )
+                            }
+                            Text(source.displayName)
                                 .foregroundStyle(.secondary)
                             Text(source.schema.columns.map(\.name).joined(separator: ", "))
                                 .font(.caption)
@@ -501,6 +552,258 @@ private struct StructuredPayloadView: View {
         }
 
         return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    }
+}
+
+private struct RequestDetailsSheet: View {
+    let package: AgentPackage
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(package.title)
+                        .font(.title2.weight(.bold))
+                    Text("From \(package.sender.name) · \(package.sender.organization ?? "Independent sender")")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Close") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+            }
+            .padding(20)
+
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    section(title: "Purpose", markdown: package.purposeMarkdown)
+                    section(title: "Instructions for the agent", markdown: package.instructionsMarkdown)
+                    outputContractSection
+                    senderMetaSection
+                }
+                .padding(20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .frame(minWidth: 620, minHeight: 560)
+    }
+
+    private func section(title: String, markdown: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.title3.weight(.semibold))
+
+            markdownBody(markdown)
+        }
+    }
+
+    private var outputContractSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Output contract")
+                .font(.title3.weight(.semibold))
+
+            Text(package.outputContract.description)
+                .font(.body)
+
+            HStack(spacing: 6) {
+                ForEach(package.outputContract.topLevelFields, id: \.self) { field in
+                    Text(field)
+                        .font(.caption.monospaced())
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color.accentColor.opacity(0.15))
+                        )
+                }
+            }
+        }
+    }
+
+    private var senderMetaSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Sender")
+                .font(.title3.weight(.semibold))
+            Text("\(package.sender.name)")
+                .font(.body)
+            Text(package.sender.email)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            if let organization = package.sender.organization {
+                Text(organization)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+            Text("Expires \(package.expiresAt.formatted(date: .abbreviated, time: .shortened))")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func markdownBody(_ markdown: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(Array(blocks(from: markdown).enumerated()), id: \.offset) { _, block in
+                renderBlock(block)
+            }
+        }
+    }
+
+    private struct MarkdownBlock {
+        enum Kind { case heading(Int); case bullet; case paragraph }
+        let kind: Kind
+        let text: String
+    }
+
+    private func blocks(from markdown: String) -> [MarkdownBlock] {
+        var blocks: [MarkdownBlock] = []
+        var paragraphBuffer: [String] = []
+
+        func flushParagraph() {
+            if !paragraphBuffer.isEmpty {
+                blocks.append(MarkdownBlock(kind: .paragraph, text: paragraphBuffer.joined(separator: " ")))
+                paragraphBuffer.removeAll()
+            }
+        }
+
+        for rawLine in markdown.components(separatedBy: "\n") {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+
+            if line.isEmpty {
+                flushParagraph()
+                continue
+            }
+
+            if line.hasPrefix("### ") {
+                flushParagraph()
+                blocks.append(MarkdownBlock(kind: .heading(3), text: String(line.dropFirst(4))))
+            } else if line.hasPrefix("## ") {
+                flushParagraph()
+                blocks.append(MarkdownBlock(kind: .heading(2), text: String(line.dropFirst(3))))
+            } else if line.hasPrefix("# ") {
+                flushParagraph()
+                blocks.append(MarkdownBlock(kind: .heading(1), text: String(line.dropFirst(2))))
+            } else if line.hasPrefix("- ") {
+                flushParagraph()
+                blocks.append(MarkdownBlock(kind: .bullet, text: String(line.dropFirst(2))))
+            } else {
+                paragraphBuffer.append(line)
+            }
+        }
+
+        flushParagraph()
+        return blocks
+    }
+
+    @ViewBuilder
+    private func renderBlock(_ block: MarkdownBlock) -> some View {
+        switch block.kind {
+        case .heading(let level):
+            Text(attributedInline(block.text))
+                .font(headingFont(level: level))
+                .padding(.top, level == 1 ? 6 : 4)
+        case .bullet:
+            HStack(alignment: .top, spacing: 8) {
+                Text("•").bold()
+                Text(attributedInline(block.text))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        case .paragraph:
+            Text(attributedInline(block.text))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func headingFont(level: Int) -> Font {
+        switch level {
+        case 1: return .title2.weight(.semibold)
+        case 2: return .title3.weight(.semibold)
+        default: return .body.weight(.semibold)
+        }
+    }
+
+    private func attributedInline(_ text: String) -> AttributedString {
+        (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+            ?? AttributedString(text)
+    }
+}
+
+private struct PostgresConnectionSheet: View {
+    let onSubmit: (PostgresConnectionConfig) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var host = "127.0.0.1"
+    @State private var port = "5433"
+    @State private var database = "cardiac"
+    @State private var user = "agent"
+    @State private var password = "agent"
+    @State private var table = "cardiac_admissions_registry"
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Add Postgres Source")
+                .font(.title2.weight(.semibold))
+
+            Text("DuckDB will ATTACH this Postgres server read-only. The password stays local to this app and is never sent to the agent.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
+                GridRow {
+                    Text("Host")
+                    TextField("127.0.0.1", text: $host)
+                }
+                GridRow {
+                    Text("Port")
+                    TextField("5433", text: $port)
+                }
+                GridRow {
+                    Text("Database")
+                    TextField("cardiac", text: $database)
+                }
+                GridRow {
+                    Text("User")
+                    TextField("agent", text: $user)
+                }
+                GridRow {
+                    Text("Password")
+                    SecureField("", text: $password)
+                }
+                GridRow {
+                    Text("Table")
+                    TextField("cardiac_admissions_registry", text: $table)
+                }
+            }
+            .textFieldStyle(.roundedBorder)
+
+            HStack {
+                Button("Cancel") { dismiss() }
+                Spacer()
+                Button {
+                    let config = PostgresConnectionConfig(
+                        host: host,
+                        port: Int(port) ?? 5432,
+                        database: database,
+                        user: user,
+                        password: password,
+                        table: table
+                    )
+                    onSubmit(config)
+                    dismiss()
+                } label: {
+                    Text("Approve Source")
+                        .fontWeight(.semibold)
+                }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(24)
+        .frame(minWidth: 420)
     }
 }
 

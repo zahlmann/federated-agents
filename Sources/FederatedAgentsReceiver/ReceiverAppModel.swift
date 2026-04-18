@@ -296,6 +296,23 @@ final class ReceiverAppModel: ObservableObject {
         }
     }
 
+    func addPostgresSource(_ config: PostgresConnectionConfig) {
+        guard let catalog else {
+            sessionStatus = "The local data catalog is not ready."
+            return
+        }
+
+        do {
+            let source = try catalog.registerPostgresTable(config)
+            approvedSources.append(source)
+            logs.append("Approved Postgres source: \(config.publicDisplayName) as \(source.alias)")
+            sessionStatus = "Approved Postgres source \(source.alias)"
+        } catch {
+            sessionStatus = error.localizedDescription
+            logs.append("Failed to register Postgres source: \(error.localizedDescription)")
+        }
+    }
+
     func addDataSource() {
         guard loadedPackage != nil else {
             return
