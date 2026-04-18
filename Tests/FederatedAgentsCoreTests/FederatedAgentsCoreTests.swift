@@ -29,11 +29,11 @@ func samplePackageSignatureVerifies() throws {
         .deletingLastPathComponent()
         .deletingLastPathComponent()
         .deletingLastPathComponent()
-        .appendingPathComponent("Sources/FederatedAgentsReceiver/Resources/Samples/PeopleOpsCompensationAudit.fagent")
+        .appendingPathComponent("Sources/FederatedAgentsReceiver/Resources/Samples/BrightlineRetentionTargeting.fagent")
 
     let package = try loader.load(from: packageURL)
 
-    #expect(package.id == "peopleops-compensation-audit")
+    #expect(package.id == "brightline-retention-targeting")
     #expect(package.verification.status == .verified)
 }
 
@@ -44,7 +44,7 @@ func generatedAgentControlScriptReadsResponseFilesWithoutStdinCollision() throws
         .deletingLastPathComponent()
         .deletingLastPathComponent()
         .deletingLastPathComponent()
-        .appendingPathComponent("Sources/FederatedAgentsReceiver/Resources/Samples/PeopleOpsCompensationAudit.fagent")
+        .appendingPathComponent("Sources/FederatedAgentsReceiver/Resources/Samples/BrightlineRetentionTargeting.fagent")
 
     let package = try AgentPackageLoader().load(from: packageURL)
     let workspace = try builder.makeWorkspace(for: package, approvedSources: [])

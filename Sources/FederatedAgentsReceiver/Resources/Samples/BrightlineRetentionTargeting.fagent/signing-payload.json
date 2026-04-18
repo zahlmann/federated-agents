@@ -1,0 +1,14 @@
+{
+  "packageID": "brightline-retention-targeting",
+  "expiresAt": "2099-06-01T18:00:00Z",
+  "trackedFiles": [
+    {
+      "path": "purpose.md",
+      "sha256": "4a423caaeee24f28463fd546aae86058d4b4dce4d11406ce95e6b7ab4394a682"
+    },
+    {
+      "path": "instructions.md",
+      "sha256": "97e072008a9d7230222d2edd41650ce7a42a6aac3578d230b3d3f7ffc2ad0706"
+    }
+  ]
+}
