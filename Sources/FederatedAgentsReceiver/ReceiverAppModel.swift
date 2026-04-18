@@ -4,6 +4,13 @@ import Foundation
 import SwiftUI
 import UniformTypeIdentifiers
 
+struct TraceEntry: Identifiable {
+    let id = UUID()
+    let channel: String
+    let payloadJSON: String
+    let timestamp: Date
+}
+
 @MainActor
 final class ReceiverAppModel: ObservableObject {
     @Published var loadedPackage: AgentPackage?
@@ -17,16 +24,21 @@ final class ReceiverAppModel: ObservableObject {
     @Published var verificationMessage = "No package loaded."
     @Published var sessionStatus = "Idle"
     @Published var lastDispatchLocation: String?
+    @Published var traceEntries: [TraceEntry] = []
+    @Published var harnessBinaryStatus: String = "Harness binary: not located"
 
     private let packageLoader = AgentPackageLoader()
     private let privacyEngine = PrototypePrivacyEngine()
-    private let workspaceBuilder = SessionWorkspaceBuilder()
 
     private var catalog: ApprovedDataCatalog?
-    private var workspace: LocalSessionWorkspace?
-    private var runner: CodexProcessRunner?
-    private var requestPollTask: Task<Void, Never>?
-    private var seenRequestIDs: Set<String> = []
+    private var outboundWorkspace: HarnessOutboundWorkspace?
+    private var runner: HarnessProcessRunner?
+    private var pendingQuestionToolIDs: [String: String] = [:]
+    private var stagedOutboundToolID: String?
+
+    init() {
+        refreshHarnessBinaryStatus()
+    }
 
     func loadBundledSample() {
         guard let sampleURL = Bundle.module.url(
@@ -69,6 +81,7 @@ final class ReceiverAppModel: ObservableObject {
             stagedOutbound = nil
             logs = []
             agentMessages = []
+            traceEntries = []
             sessionStatus = "Package loaded"
             packageSummaryMessage = package.summary
             verificationMessage = package.verification.message
@@ -129,88 +142,114 @@ final class ReceiverAppModel: ObservableObject {
 
         stopSession()
 
-        do {
-            let workspace = try workspaceBuilder.makeWorkspace(
-                for: package,
-                approvedSources: approvedSources
-            )
+        guard let binaryURL = HarnessBinaryLocator.locate() else {
+            sessionStatus = "Harness binary not found. Build it with `scripts/open_receiver_app.sh` or set RECEIVER_HARNESS_BIN."
+            return
+        }
 
-            let runner = CodexProcessRunner(workspace: workspace) { [weak self] event in
+        do {
+            let outboundWorkspace = try HarnessOutboundWorkspaceFactory.make(packageID: package.id)
+
+            let runner = HarnessProcessRunner(binaryURL: binaryURL) { [weak self] event in
                 self?.handle(event: event)
             }
 
-            self.workspace = workspace
+            self.outboundWorkspace = outboundWorkspace
             self.runner = runner
-            self.seenRequestIDs = []
             self.logs = []
             self.agentMessages = []
+            self.traceEntries = []
             self.pendingQuestions = []
             self.stagedOutbound = nil
+            self.pendingQuestionToolIDs = [:]
+            self.stagedOutboundToolID = nil
             self.sessionStatus = "Starting session"
 
-            try runner.start()
-            startPollingRequests()
+            let packageMarkdown = HarnessPayloadBuilder.buildPackageMarkdown(package)
+            let schemaMarkdown = HarnessPayloadBuilder.buildApprovedSchemaMarkdown(from: approvedSources)
+
+            try runner.start(with: HarnessStartPayload(
+                model: "gpt-5.4",
+                reasoningEffort: "medium",
+                packageMarkdown: packageMarkdown,
+                schemaMarkdown: schemaMarkdown
+            ))
         } catch {
             sessionStatus = error.localizedDescription
         }
     }
 
     func stopSession() {
-        requestPollTask?.cancel()
-        requestPollTask = nil
         runner?.stop()
         runner = nil
     }
 
     func answer(question: PendingQuestion, answer: String) {
-        writeResponse(
-            SessionResponseEnvelope(
-                id: question.id,
-                status: "answered",
-                message: "Receiver answered the question.",
-                answer: answer,
-                resultJSON: nil
+        guard let runner, let toolID = pendingQuestionToolIDs[question.id] else {
+            pendingQuestions.removeAll { $0.id == question.id }
+            return
+        }
+
+        do {
+            try runner.sendToolResponse(
+                id: toolID,
+                ok: true,
+                result: ["answer": answer]
             )
-        )
+        } catch {
+            sessionStatus = "Failed to deliver answer: \(error.localizedDescription)"
+        }
+
+        pendingQuestionToolIDs.removeValue(forKey: question.id)
         pendingQuestions.removeAll { $0.id == question.id }
     }
 
     func approveOutboundDraft() {
-        guard let stagedOutbound else {
+        guard let stagedOutbound, let toolID = stagedOutboundToolID, let runner else {
             return
         }
 
         let dispatchLocation = dispatch(payload: stagedOutbound.payload)
         lastDispatchLocation = dispatchLocation
 
-        writeResponse(
-            SessionResponseEnvelope(
-                id: stagedOutbound.id,
-                status: "approved",
-                message: "The receiver approved the outbound result. Saved to \(dispatchLocation).",
-                answer: nil,
-                resultJSON: nil
+        do {
+            try runner.sendToolResponse(
+                id: toolID,
+                ok: true,
+                result: [
+                    "status": "approved",
+                    "message": "Receiver approved the outbound result. Saved to \(dispatchLocation).",
+                ]
             )
-        )
+        } catch {
+            sessionStatus = "Failed to signal approval: \(error.localizedDescription)"
+        }
 
+        stagedOutboundToolID = nil
         self.stagedOutbound = nil
     }
 
     func rejectOutboundDraft() {
-        guard let stagedOutbound else {
+        guard let stagedOutbound, let toolID = stagedOutboundToolID, let runner else {
             return
         }
 
-        writeResponse(
-            SessionResponseEnvelope(
-                id: stagedOutbound.id,
-                status: "rejected",
-                message: "The receiver rejected the outbound result.",
-                answer: nil,
-                resultJSON: nil
-            )
-        )
+        _ = stagedOutbound
 
+        do {
+            try runner.sendToolResponse(
+                id: toolID,
+                ok: true,
+                result: [
+                    "status": "rejected",
+                    "message": "Receiver rejected the outbound result.",
+                ]
+            )
+        } catch {
+            sessionStatus = "Failed to signal rejection: \(error.localizedDescription)"
+        }
+
+        stagedOutboundToolID = nil
         self.stagedOutbound = nil
     }
 
@@ -222,112 +261,122 @@ final class ReceiverAppModel: ObservableObject {
         capabilityApprovals[capability.id] = approved
     }
 
-    private func startPollingRequests() {
-        requestPollTask = Task { [weak self] in
-            while let self, !Task.isCancelled {
-                self.processPendingRequests()
-                try? await Task.sleep(for: .milliseconds(400))
-            }
+    private func refreshHarnessBinaryStatus() {
+        if let binaryURL = HarnessBinaryLocator.locate() {
+            harnessBinaryStatus = "Harness binary: \(binaryURL.path)"
+        } else {
+            harnessBinaryStatus = "Harness binary: not located. Set RECEIVER_HARNESS_BIN or run `scripts/open_receiver_app.sh`."
         }
     }
 
-    private func processPendingRequests() {
-        guard let workspace else {
-            return
-        }
-
-        let requestURLs = (try? FileManager.default.contentsOfDirectory(
-            at: workspace.requestDirectoryURL,
-            includingPropertiesForKeys: nil
-        )) ?? []
-
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-
-        for requestURL in requestURLs.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
-            guard !seenRequestIDs.contains(requestURL.deletingPathExtension().lastPathComponent) else {
-                continue
-            }
-
-            guard
-                let data = try? Data(contentsOf: requestURL),
-                let envelope = try? decoder.decode(SessionRequestEnvelope.self, from: data)
-            else {
-                continue
-            }
-
-            seenRequestIDs.insert(envelope.id)
-            handle(envelope: envelope, requestURL: requestURL)
-        }
-    }
-
-    private func handle(event: CodexEvent) {
+    private func handle(event: HarnessEvent) {
         switch event {
         case .status(let message):
             logs.append(message)
             sessionStatus = message
+
         case .agentMessage(let message):
             agentMessages.append(message)
+
+        case .finalText(let text):
+            if !text.isEmpty {
+                agentMessages.append(text)
+            }
+
+            sessionStatus = "Session finished"
+
+        case .error(let message):
+            logs.append("error: \(message)")
+            sessionStatus = "Session error"
+
         case .rawLine(let line):
             logs.append(line)
+
+        case .trace(let trace):
+            traceEntries.append(
+                TraceEntry(
+                    channel: trace.channel,
+                    payloadJSON: trace.payloadJSON,
+                    timestamp: trace.timestamp ?? Date()
+                )
+            )
+
         case .finished(let exitCode):
-            logs.append("Codex exited with status \(exitCode)")
-            sessionStatus = "Session finished"
-            requestPollTask?.cancel()
-            requestPollTask = nil
+            logs.append("Harness exited with status \(exitCode)")
+            if exitCode != 0 {
+                sessionStatus = "Session ended with exit \(exitCode)"
+            }
+
+        case .toolRequest(let request):
+            handleToolRequest(request)
         }
     }
 
-    private func handle(envelope: SessionRequestEnvelope, requestURL: URL) {
-        switch envelope.kind {
-        case .askUser:
+    private func handleToolRequest(_ request: HarnessToolRequest) {
+        switch request.name {
+        case "ask_user":
+            let decoded = request.asAskUser
+            let questionID = UUID().uuidString
+            pendingQuestionToolIDs[questionID] = request.id
+
             pendingQuestions.append(
                 PendingQuestion(
-                    id: envelope.id,
-                    title: envelope.title ?? "Question",
-                    prompt: envelope.prompt ?? "No prompt provided.",
-                    placeholder: envelope.placeholder,
-                    requestPath: requestURL
+                    id: questionID,
+                    title: decoded.title,
+                    prompt: decoded.prompt,
+                    placeholder: decoded.placeholder,
+                    requestPath: URL(fileURLWithPath: "/dev/null")
                 )
             )
+
             sessionStatus = "Waiting for receiver answer"
 
-        case .safeQuery:
-            runSafeQuery(envelope: envelope)
+        case "run_safe_query":
+            runSafeQuery(
+                toolID: request.id,
+                sql: request.asSafeQuery.sql,
+                rationale: request.asSafeQuery.why
+            )
 
-        case .submitResult:
+        case "submit_result":
+            let decoded = request.asSubmitResult
+            stagedOutboundToolID = request.id
             stagedOutbound = OutboundDraft(
-                id: envelope.id,
-                summary: envelope.summary ?? "Pending outbound payload",
-                payload: envelope.resultJSON ?? "{}",
-                requestPath: requestURL
+                id: request.id,
+                summary: decoded.summary,
+                payload: decoded.payloadJSON,
+                requestPath: URL(fileURLWithPath: "/dev/null")
             )
             sessionStatus = "Waiting for outbound review"
 
-        case .log:
-            logs.append(envelope.message ?? "Agent logged an empty message.")
-            writeResponse(
-                SessionResponseEnvelope(
-                    id: envelope.id,
-                    status: "logged",
-                    message: "Receiver log recorded.",
-                    answer: nil,
-                    resultJSON: nil
-                )
+        default:
+            logs.append("Unknown tool request: \(request.name)")
+            try? runner?.sendToolResponse(
+                id: request.id,
+                ok: false,
+                error: "Unknown tool: \(request.name)"
             )
         }
     }
 
-    private func runSafeQuery(envelope: SessionRequestEnvelope) {
-        guard let sql = envelope.sql, let catalog else {
-            writeResponse(
-                SessionResponseEnvelope(
-                    id: envelope.id,
-                    status: "rejected",
-                    message: "No SQL was provided.",
-                    answer: nil,
-                    resultJSON: nil
-                )
+    private func runSafeQuery(toolID: String, sql: String, rationale: String?) {
+        guard let runner, let catalog else {
+            try? runner?.sendToolResponse(
+                id: toolID,
+                ok: false,
+                error: "No approved data catalog is ready."
+            )
+            return
+        }
+
+        if sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            try? runner.sendToolResponse(
+                id: toolID,
+                ok: true,
+                result: [
+                    "status": "rejected",
+                    "message": "No SQL was provided.",
+                ]
             )
             return
         }
@@ -336,71 +385,46 @@ final class ReceiverAppModel: ObservableObject {
             let (decision, result) = try catalog.executeSafeQuery(sql, using: privacyEngine)
 
             if let result {
-                let payload = SafeQueryPayload(
-                    message: decision.message,
-                    columns: result.columns,
-                    rows: result.rows
-                )
-                let resultJSONData = try JSONEncoder.prettyPrintedString.encode(payload)
-                let resultJSON = String(decoding: resultJSONData, as: UTF8.self)
+                let payload: [String: Any] = [
+                    "status": "approved",
+                    "message": decision.message,
+                    "columns": result.columns,
+                    "rows": result.rows,
+                ]
 
-                writeResponse(
-                    SessionResponseEnvelope(
-                        id: envelope.id,
-                        status: "approved",
-                        message: decision.message,
-                        answer: nil,
-                        resultJSON: resultJSON
-                    )
-                )
+                try runner.sendToolResponse(id: toolID, ok: true, result: payload)
                 sessionStatus = "Returned privacy-safe query result"
+
+                if let rationale, !rationale.isEmpty {
+                    logs.append("run_safe_query rationale: \(rationale)")
+                }
             } else {
-                writeResponse(
-                    SessionResponseEnvelope(
-                        id: envelope.id,
-                        status: "rejected",
-                        message: decision.message,
-                        answer: nil,
-                        resultJSON: nil
-                    )
+                try runner.sendToolResponse(
+                    id: toolID,
+                    ok: true,
+                    result: [
+                        "status": "rejected",
+                        "message": decision.message,
+                    ]
                 )
                 sessionStatus = "Rejected unsafe query"
             }
         } catch {
-            writeResponse(
-                SessionResponseEnvelope(
-                    id: envelope.id,
-                    status: "rejected",
-                    message: error.localizedDescription,
-                    answer: nil,
-                    resultJSON: nil
-                )
+            try? runner.sendToolResponse(
+                id: toolID,
+                ok: false,
+                error: error.localizedDescription
             )
             sessionStatus = "Query failed"
         }
     }
 
-    private func writeResponse(_ response: SessionResponseEnvelope) {
-        guard let workspace else {
-            return
-        }
-
-        let url = workspace.responseDirectoryURL.appendingPathComponent("\(response.id).json")
-
-        do {
-            let data = try JSONEncoder.iso8601.encode(response)
-            try data.write(to: url)
-        } catch {
-            sessionStatus = "Failed to write response: \(error.localizedDescription)"
-        }
-    }
-
     private func dispatch(payload: String) -> String {
-        guard let workspace else {
+        guard let outboundWorkspace else {
             return "No workspace"
         }
 
-        let destination = workspace.outboundDirectoryURL.appendingPathComponent("approved-result.json")
+        let destination = outboundWorkspace.approvedResultURL
 
         do {
             try payload.write(to: destination, atomically: true, encoding: .utf8)
@@ -410,25 +434,5 @@ final class ReceiverAppModel: ObservableObject {
             sessionStatus = "Failed to save approved result: \(error.localizedDescription)"
             return "Save failed"
         }
-    }
-}
-
-private struct SafeQueryPayload: Encodable {
-    let message: String
-    let columns: [String]
-    let rows: [[String]]
-}
-
-private extension JSONEncoder {
-    static var iso8601: JSONEncoder {
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        return encoder
-    }
-
-    static var prettyPrintedString: JSONEncoder {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        return encoder
     }
 }
