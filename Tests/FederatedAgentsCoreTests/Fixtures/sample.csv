@@ -1,0 +1,7 @@
+department,level,location,base_salary,bonus
+Engineering,L4,Vienna,120000,15000
+Engineering,L4,Vienna,118000,12000
+Engineering,L4,Remote,124000,14000
+PeopleOps,L3,Vienna,87000,5000
+PeopleOps,L3,Remote,90000,6000
+Finance,L5,Berlin,132000,18000

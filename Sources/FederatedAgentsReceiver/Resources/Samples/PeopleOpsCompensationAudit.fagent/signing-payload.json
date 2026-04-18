@@ -1,0 +1,14 @@
+{
+  "packageID" : "peopleops-compensation-audit",
+  "expiresAt" : "2026-06-01T18:00:00Z",
+  "trackedFiles" : [
+    {
+      "path" : "purpose.md",
+      "sha256" : "b82df5e2ed929cee9e64d7c5fc5e6d40dc480dd3dcd5a6bcc6720408ff3a22ee"
+    },
+    {
+      "path" : "instructions.md",
+      "sha256" : "2f3be50f0dc910857dd56187fb9e97ebacc785d43f2859712e8de391e1e24573"
+    }
+  ]
+}
