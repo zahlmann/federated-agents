@@ -9,18 +9,19 @@ public enum HarnessPayloadBuilder {
         return """
         # Packaged Agent Request
 
+        ## Request identity (use these values directly)
+
+        - Package id: `\(package.id)` — use this verbatim whenever the output contract asks for `request_id`.
+        - Title: \(package.title)
+        - Summary: \(package.summary)
+        - Expires at: \(ISO8601DateFormatter().string(from: package.expiresAt))
+        - Callback URL: \(package.callbackURL?.absoluteString ?? "No remote callback configured")
+
         ## Sender
 
         - Name: \(package.sender.name)
         - Email: \(package.sender.email)
         - Organization: \(package.sender.organization ?? "Not provided")
-
-        ## Request
-
-        - Title: \(package.title)
-        - Summary: \(package.summary)
-        - Expires at: \(ISO8601DateFormatter().string(from: package.expiresAt))
-        - Callback URL: \(package.callbackURL?.absoluteString ?? "No remote callback configured")
 
         ## Requested capabilities
 
