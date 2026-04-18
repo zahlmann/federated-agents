@@ -284,13 +284,7 @@ struct ReceiverRootView: View {
                     Text(draft.summary)
                         .font(.title3.weight(.semibold))
 
-                    ScrollView(.horizontal) {
-                        Text(draft.payload)
-                            .font(.system(.body, design: .monospaced))
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .frame(minHeight: 180)
+                    StructuredPayloadView(payloadJSON: draft.payload)
 
                     HStack(spacing: 12) {
                         Button {
@@ -328,40 +322,185 @@ struct ReceiverRootView: View {
     }
 
     private var activitySection: some View {
-        GroupBox("Activity") {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Agent Messages")
-                    .font(.headline)
-
+        GroupBox {
+            VStack(alignment: .leading, spacing: 10) {
                 if model.agentMessages.isEmpty {
-                    Text("No agent messages yet.")
+                    Text("The agent has not said anything yet.")
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(Array(model.agentMessages.enumerated()), id: \.offset) { _, message in
-                        Text(message)
-                            .textSelection(.enabled)
-                            .padding(.bottom, 6)
-                    }
-                }
-
-                Divider()
-
-                Text("System Log")
-                    .font(.headline)
-
-                if model.logs.isEmpty {
-                    Text("No log lines yet.")
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(Array(model.logs.enumerated()), id: \.offset) { _, line in
-                        Text(line)
-                            .font(.caption.monospaced())
-                            .foregroundStyle(.secondary)
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: "sparkle")
+                                .foregroundStyle(.tint)
+                                .font(.callout)
+                                .padding(.top, 2)
+                            Text(message)
+                                .font(.body)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                     }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+        } label: {
+            Text("Agent Messages")
+                .font(.headline)
         }
+    }
+}
+
+private struct StructuredPayloadView: View {
+    let payloadJSON: String
+    @State private var showRawJSON = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if let parsed = parse() {
+                ForEach(parsed.keys.sorted(), id: \.self) { key in
+                    fieldView(label: key, value: parsed[key] ?? "")
+                }
+            }
+
+            DisclosureGroup(isExpanded: $showRawJSON) {
+                ScrollView(.horizontal) {
+                    Text(payloadJSON)
+                        .font(.system(.caption, design: .monospaced))
+                        .textSelection(.enabled)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: 160)
+            } label: {
+                Text("Raw JSON payload")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func fieldView(label: String, value: Any) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(prettyLabel(label))
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+
+            valueView(value: value)
+        }
+    }
+
+    @ViewBuilder
+    private func valueView(value: Any) -> some View {
+        if let string = value as? String {
+            Text(string)
+                .font(.body)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+        } else if let number = value as? NSNumber {
+            Text("\(number)")
+                .font(.body.monospacedDigit())
+        } else if let array = value as? [[String: Any]] {
+            tableView(rows: array)
+        } else if let array = value as? [Any] {
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(Array(array.enumerated()), id: \.offset) { _, element in
+                    Text("• \(String(describing: element))")
+                        .font(.body)
+                }
+            }
+        } else if let dict = value as? [String: Any] {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(dict.keys.sorted(), id: \.self) { key in
+                    HStack(alignment: .top) {
+                        Text("\(prettyLabel(key)):")
+                            .font(.callout.weight(.medium))
+                        Text(String(describing: dict[key] ?? ""))
+                            .font(.callout)
+                    }
+                }
+            }
+        } else {
+            Text(String(describing: value))
+                .font(.body)
+        }
+    }
+
+    @ViewBuilder
+    private func tableView(rows: [[String: Any]]) -> some View {
+        let columns = rows.flatMap { $0.keys }.reduce(into: [String]()) { accumulator, key in
+            if !accumulator.contains(key) {
+                accumulator.append(key)
+            }
+        }
+
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 0) {
+                ForEach(columns, id: \.self) { column in
+                    Text(prettyLabel(column))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
+                }
+            }
+            .background(Color.secondary.opacity(0.08))
+
+            Divider()
+
+            ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+                HStack(spacing: 0) {
+                    ForEach(columns, id: \.self) { column in
+                        Text(cellText(row[column]))
+                            .font(.callout)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 6)
+                            .textSelection(.enabled)
+                    }
+                }
+                .background(index.isMultiple(of: 2) ? Color.clear : Color.secondary.opacity(0.05))
+
+                if index != rows.count - 1 {
+                    Divider()
+                }
+            }
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.secondary.opacity(0.25), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func cellText(_ value: Any?) -> String {
+        guard let value else {
+            return ""
+        }
+
+        if let string = value as? String {
+            return string
+        }
+
+        if let number = value as? NSNumber {
+            return "\(number)"
+        }
+
+        return String(describing: value)
+    }
+
+    private func prettyLabel(_ raw: String) -> String {
+        raw.replacingOccurrences(of: "_", with: " ")
+    }
+
+    private func parse() -> [String: Any]? {
+        guard let data = payloadJSON.data(using: .utf8) else {
+            return nil
+        }
+
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
     }
 }
 

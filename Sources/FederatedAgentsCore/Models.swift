@@ -34,7 +34,6 @@ public struct CapabilityRequest: Codable, Identifiable, Sendable {
 }
 
 public enum CapabilityKind: String, Codable, CaseIterable, Sendable {
-    case askFollowUpQuestions
     case analyzeCSV
     case analyzeParquet
     case connectDatabase
@@ -42,8 +41,6 @@ public enum CapabilityKind: String, Codable, CaseIterable, Sendable {
 
     public var title: String {
         switch self {
-        case .askFollowUpQuestions:
-            "Ask follow-up questions"
         case .analyzeCSV:
             "Analyze CSV files"
         case .analyzeParquet:
