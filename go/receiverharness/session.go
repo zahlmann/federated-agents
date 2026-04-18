@@ -143,8 +143,8 @@ func NewReceiverToolRegistry(callbacks ReceiverCallbacks) *ToolRegistry {
 
 	registry.Register(submitResultToolDefinition(), func(ctx context.Context, call FunctionCall) (any, error) {
 		var args struct {
-			Summary string          `json:"summary"`
-			Payload json.RawMessage `json:"payload"`
+			Summary string `json:"summary"`
+			Payload string `json:"payload"`
 		}
 
 		if err := json.Unmarshal(call.Arguments, &args); err != nil {
@@ -155,7 +155,12 @@ func NewReceiverToolRegistry(callbacks ReceiverCallbacks) *ToolRegistry {
 			return nil, fmt.Errorf("submit_result callback is not wired")
 		}
 
-		return callbacks.SubmitResult(ctx, args.Summary, args.Payload)
+		payload := json.RawMessage(args.Payload)
+		if len(payload) == 0 {
+			payload = json.RawMessage("{}")
+		}
+
+		return callbacks.SubmitResult(ctx, args.Summary, payload)
 	})
 
 	return registry
@@ -329,10 +334,7 @@ func submitResultToolDefinition() ToolDefinition {
 		Parameters: objectSchema(
 			map[string]any{
 				"summary": stringSchema("Short summary of what the staged result contains."),
-				"payload": map[string]any{
-					"type":        "object",
-					"description": "Structured JSON payload to stage for outbound review.",
-				},
+				"payload": stringSchema("JSON-encoded payload matching the output contract. Must be a valid JSON string; serialize the object before calling."),
 			},
 			"summary",
 			"payload",

@@ -62,24 +62,41 @@ public struct HarnessToolRequest: @unchecked Sendable {
 
     public var asSubmitResult: (summary: String, payloadJSON: String) {
         let summary = (arguments["summary"] as? String) ?? ""
-        let payloadJSON: String
+        let payloadJSON = Self.prettyPayload(from: arguments["payload"])
+        return (summary: summary, payloadJSON: payloadJSON)
+    }
 
-        if let payload = arguments["payload"] {
-            let data = try? JSONSerialization.data(
-                withJSONObject: payload,
-                options: [.prettyPrinted, .sortedKeys]
-            )
-
-            if let data, let string = String(data: data, encoding: .utf8) {
-                payloadJSON = string
-            } else {
-                payloadJSON = String(describing: payload)
-            }
-        } else {
-            payloadJSON = "{}"
+    private static func prettyPayload(from raw: Any?) -> String {
+        guard let raw else {
+            return "{}"
         }
 
-        return (summary: summary, payloadJSON: payloadJSON)
+        if let string = raw as? String {
+            if let data = string.data(using: .utf8),
+               let parsed = try? JSONSerialization.jsonObject(
+                   with: data,
+                   options: [.fragmentsAllowed]
+               ),
+               let pretty = try? JSONSerialization.data(
+                   withJSONObject: parsed,
+                   options: [.prettyPrinted, .sortedKeys]
+               ),
+               let prettyString = String(data: pretty, encoding: .utf8) {
+                return prettyString
+            }
+
+            return string
+        }
+
+        if let data = try? JSONSerialization.data(
+            withJSONObject: raw,
+            options: [.prettyPrinted, .sortedKeys]
+        ),
+        let string = String(data: data, encoding: .utf8) {
+            return string
+        }
+
+        return String(describing: raw)
     }
 }
 
