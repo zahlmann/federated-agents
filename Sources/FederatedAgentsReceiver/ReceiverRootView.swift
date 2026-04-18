@@ -27,6 +27,10 @@ struct ReceiverRootView: View {
             .listStyle(.sidebar)
         } detail: {
             VStack(spacing: 0) {
+                if !model.pendingInvitations.isEmpty {
+                    invitationBanner
+                }
+
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
                         packageHeader
@@ -48,6 +52,76 @@ struct ReceiverRootView: View {
                     .frame(height: 240)
             }
         }
+    }
+
+    private var invitationBanner: some View {
+        VStack(spacing: 10) {
+            ForEach(model.pendingInvitations) { invitation in
+                HStack(alignment: .top, spacing: 14) {
+                    Image(systemName: "tray.and.arrow.down.fill")
+                        .font(.title2)
+                        .foregroundStyle(.white)
+                        .frame(width: 40, height: 40)
+                        .background(
+                            Circle()
+                                .fill(Color.accentColor)
+                        )
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("New analysis request")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .textCase(.uppercase)
+
+                        Text(invitation.title)
+                            .font(.title3.weight(.semibold))
+
+                        Text("From \(invitation.senderName)\(invitation.senderOrganization.map { " · \($0)" } ?? "")")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+
+                        Text(invitation.summary)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 2)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    VStack(spacing: 8) {
+                        Button {
+                            model.acceptInvitation(invitation)
+                        } label: {
+                            Text("Accept")
+                                .frame(minWidth: 90)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+
+                        Button {
+                            model.dismissInvitation(invitation)
+                        } label: {
+                            Text("Dismiss")
+                                .frame(minWidth: 90)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.large)
+                    }
+                }
+                .padding(16)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.accentColor.opacity(0.10))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.accentColor.opacity(0.35), lineWidth: 1)
+                )
+                .padding(.horizontal, 16)
+            }
+        }
+        .padding(.vertical, 12)
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 
     private var sessionControlSection: some View {

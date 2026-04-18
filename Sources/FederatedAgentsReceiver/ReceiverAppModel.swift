@@ -198,6 +198,7 @@ final class ReceiverAppModel: ObservableObject {
     @Published var traceLogPath: String?
     @Published var isSessionActive: Bool = false
     @Published var hasDispatchedOutbound: Bool = false
+    @Published var pendingInvitations: [IncomingInvitation] = []
 
     var canStartSession: Bool {
         guard loadedPackage != nil, !approvedSources.isEmpty else {
@@ -237,9 +238,46 @@ final class ReceiverAppModel: ObservableObject {
     private var stagedOutboundToolID: String?
     private var schemaSnapshotAtQuestion: [String: String] = [:]
 
+    private var inboxWatcher: InboxWatcher?
+
     init() {
         refreshHarnessBinaryStatus()
         refreshAPIKeyStatus()
+        startWatchingInbox()
+    }
+
+    private func startWatchingInbox() {
+        let watcher = InboxWatcher { [weak self] invitation in
+            self?.receiveInvitation(invitation)
+        }
+        watcher.start()
+        inboxWatcher = watcher
+    }
+
+    func acceptInvitation(_ invitation: IncomingInvitation) {
+        loadPackage(at: invitation.packageURL)
+        pendingInvitations.removeAll { $0.id == invitation.id }
+    }
+
+    func dismissInvitation(_ invitation: IncomingInvitation) {
+        let archiveRoot = InboxLocator.archivedURL()
+        let destination = archiveRoot.appendingPathComponent(invitation.packageURL.lastPathComponent)
+        try? FileManager.default.createDirectory(at: archiveRoot, withIntermediateDirectories: true)
+
+        if FileManager.default.fileExists(atPath: destination.path) {
+            try? FileManager.default.removeItem(at: destination)
+        }
+
+        try? FileManager.default.moveItem(at: invitation.packageURL, to: destination)
+        pendingInvitations.removeAll { $0.id == invitation.id }
+    }
+
+    private func receiveInvitation(_ invitation: IncomingInvitation) {
+        if pendingInvitations.contains(where: { $0.id == invitation.id }) {
+            return
+        }
+
+        pendingInvitations.append(invitation)
     }
 
     func loadBundledSample() {

@@ -40,7 +40,11 @@ cat > "$plist_path" <<'EOF'
     <key>CFBundleIdentifier</key>
     <string>com.federated-agents.receiver</string>
     <key>CFBundleName</key>
-    <string>FederatedAgentsReceiver</string>
+    <string>Federated Agents</string>
+    <key>CFBundleDisplayName</key>
+    <string>Federated Agents</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -54,6 +58,8 @@ cat > "$plist_path" <<'EOF'
 </dict>
 </plist>
 EOF
+
+cp "$repo_root/Sources/FederatedAgentsReceiver/Resources/AppIcon/AppIcon.icns" "$resources_dir/AppIcon.icns"
 
 rm -f "$bundle_binary_path"
 ln -s "$binary_path" "$bundle_binary_path"
