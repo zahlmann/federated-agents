@@ -14,6 +14,12 @@ bundle_binary_path="$macos_dir/FederatedAgentsReceiver"
 cd "$repo_root"
 swift build
 
+# Clean up stale detached launches so a hidden old process does not make
+# a fresh GUI launch look like a no-op.
+pkill -f "$binary_path" >/dev/null 2>&1 || true
+pkill -f "$app_bundle/Contents/MacOS/FederatedAgentsReceiver" >/dev/null 2>&1 || true
+sleep 0.2
+
 mkdir -p "$macos_dir" "$resources_dir"
 
 cat > "$plist_path" <<'EOF'
