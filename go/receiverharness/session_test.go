@@ -37,8 +37,8 @@ func TestRunSessionHandlesToolLoop(t *testing.T) {
 			sentMessages = append(sentMessages, message)
 			return nil
 		},
-		AskUser: func(_ context.Context, title string, prompt string, placeholder string) (string, error) {
-			return "", nil
+		AskUser: func(_ context.Context, title string, prompt string, choices []string) (string, string, error) {
+			return "", "", nil
 		},
 		RunSafeQuery: func(_ context.Context, sql string, why string) (any, error) {
 			return map[string]any{"rows": []any{}}, nil

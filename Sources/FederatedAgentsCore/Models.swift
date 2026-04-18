@@ -125,20 +125,20 @@ public struct PendingQuestion: Identifiable, Sendable {
     public let id: String
     public let title: String
     public let prompt: String
-    public let placeholder: String?
+    public let choices: [String]
     public let requestPath: URL
 
     public init(
         id: String,
         title: String,
         prompt: String,
-        placeholder: String?,
+        choices: [String],
         requestPath: URL
     ) {
         self.id = id
         self.title = title
         self.prompt = prompt
-        self.placeholder = placeholder
+        self.choices = choices
         self.requestPath = requestPath
     }
 }

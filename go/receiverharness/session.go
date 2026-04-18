@@ -60,7 +60,7 @@ type SessionResult struct {
 
 type ReceiverCallbacks struct {
 	SendMessage  func(ctx context.Context, message string) error
-	AskUser      func(ctx context.Context, title string, prompt string, placeholder string) (string, error)
+	AskUser      func(ctx context.Context, title string, prompt string, choices []string) (answer string, contextUpdate string, err error)
 	RunSafeQuery func(ctx context.Context, sql string, why string) (any, error)
 	SubmitResult func(ctx context.Context, summary string, payload json.RawMessage) (any, error)
 }
@@ -128,9 +128,9 @@ func NewReceiverToolRegistry(callbacks ReceiverCallbacks) *ToolRegistry {
 
 	registry.Register(askUserToolDefinition(), func(ctx context.Context, call FunctionCall) (any, error) {
 		var args struct {
-			Title       string `json:"title"`
-			Prompt      string `json:"prompt"`
-			Placeholder string `json:"placeholder"`
+			Title   string   `json:"title"`
+			Prompt  string   `json:"prompt"`
+			Choices []string `json:"choices"`
 		}
 
 		if err := decodeFunctionArguments(call.Arguments, &args); err != nil {
@@ -141,14 +141,27 @@ func NewReceiverToolRegistry(callbacks ReceiverCallbacks) *ToolRegistry {
 			return nil, fmt.Errorf("ask_user callback is not wired")
 		}
 
-		answer, err := callbacks.AskUser(ctx, args.Title, args.Prompt, args.Placeholder)
+		if len(args.Choices) < 2 || len(args.Choices) > 5 {
+			return map[string]any{
+				"error":   "invalid_choices",
+				"message": fmt.Sprintf("ask_user requires 2 to 5 choices; got %d", len(args.Choices)),
+			}, nil
+		}
+
+		answer, contextUpdate, err := callbacks.AskUser(ctx, args.Title, args.Prompt, args.Choices)
 		if err != nil {
 			return nil, err
 		}
 
-		return map[string]any{
+		result := map[string]any{
 			"answer": answer,
-		}, nil
+		}
+
+		if contextUpdate != "" {
+			result["contextUpdate"] = contextUpdate
+		}
+
+		return result, nil
 	})
 
 	registry.Register(safeQueryToolDefinition(), func(ctx context.Context, call FunctionCall) (any, error) {
@@ -321,16 +334,20 @@ func askUserToolDefinition() ToolDefinition {
 	return ToolDefinition{
 		Type:        "function",
 		Name:        "ask_user",
-		Description: "Ask the receiver one focused clarification question and wait for the answer.",
+		Description: "Ask the receiver one focused clarification question with 2 to 5 concrete choices. The receiver picks one; there is no free-text input.",
 		Parameters: objectSchema(
 			map[string]any{
-				"title":       stringSchema("Short title for the question card."),
-				"prompt":      stringSchema("The full question to show the receiver."),
-				"placeholder": stringSchema("Optional answer hint. Pass an empty string when none."),
+				"title":  stringSchema("Short title for the question card (max 60 chars)."),
+				"prompt": stringSchema("The full question to show the receiver. Be specific."),
+				"choices": map[string]any{
+					"type":        "array",
+					"description": "Between 2 and 5 distinct answer options. The receiver must pick exactly one.",
+					"items":       stringSchema("One answer option. Keep it short and self-contained."),
+				},
 			},
 			"title",
 			"prompt",
-			"placeholder",
+			"choices",
 		),
 		Strict: boolPointer(true),
 	}

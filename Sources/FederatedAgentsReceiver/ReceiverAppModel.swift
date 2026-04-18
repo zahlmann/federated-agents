@@ -196,6 +196,36 @@ final class ReceiverAppModel: ObservableObject {
     @Published var harnessBinaryStatus: String = "Harness binary: not located"
     @Published var apiKeyStatus: String = "API key: unknown"
     @Published var traceLogPath: String?
+    @Published var isSessionActive: Bool = false
+    @Published var hasDispatchedOutbound: Bool = false
+
+    var canStartSession: Bool {
+        guard loadedPackage != nil, !approvedSources.isEmpty else {
+            return false
+        }
+
+        if isSessionActive {
+            return false
+        }
+
+        if hasDispatchedOutbound {
+            return false
+        }
+
+        return true
+    }
+
+    var sessionButtonLabel: String {
+        if hasDispatchedOutbound {
+            return "Session complete"
+        }
+
+        if isSessionActive {
+            return "Session running"
+        }
+
+        return "Start Agent Session"
+    }
 
     private let packageLoader = AgentPackageLoader()
     private let privacyEngine = PrototypePrivacyEngine()
@@ -205,6 +235,7 @@ final class ReceiverAppModel: ObservableObject {
     private var runner: HarnessProcessRunner?
     private var pendingQuestionToolIDs: [String: String] = [:]
     private var stagedOutboundToolID: String?
+    private var schemaSnapshotAtQuestion: [String: String] = [:]
 
     init() {
         refreshHarnessBinaryStatus()
@@ -257,6 +288,8 @@ final class ReceiverAppModel: ObservableObject {
             packageSummaryMessage = package.summary
             verificationMessage = package.verification.message
             lastDispatchLocation = nil
+            hasDispatchedOutbound = false
+            isSessionActive = false
         } catch {
             packageSummaryMessage = error.localizedDescription
             sessionStatus = "Failed to load package"
@@ -311,7 +344,13 @@ final class ReceiverAppModel: ObservableObject {
             return
         }
 
+        if hasDispatchedOutbound {
+            sessionStatus = "This package has already been dispatched. Reload the package to start a new session."
+            return
+        }
+
         stopSession()
+        hasDispatchedOutbound = false
 
         guard let binaryURL = HarnessBinaryLocator.locate() else {
             sessionStatus = "Harness binary not found. Build it with `scripts/open_receiver_app.sh` or set RECEIVER_HARNESS_BIN."
@@ -362,6 +401,8 @@ final class ReceiverAppModel: ObservableObject {
                 packageMarkdown: packageMarkdown,
                 schemaMarkdown: schemaMarkdown
             ))
+
+            isSessionActive = true
         } catch {
             sessionStatus = error.localizedDescription
         }
@@ -370,6 +411,7 @@ final class ReceiverAppModel: ObservableObject {
     func stopSession() {
         runner?.stop()
         runner = nil
+        isSessionActive = false
     }
 
     func answer(question: PendingQuestion, answer: String) {
@@ -378,17 +420,26 @@ final class ReceiverAppModel: ObservableObject {
             return
         }
 
+        var result: [String: Any] = ["answer": answer]
+        if let snapshotAtQuestion = schemaSnapshotAtQuestion[question.id] {
+            let currentSchema = HarnessPayloadBuilder.buildApprovedSchemaMarkdown(from: approvedSources)
+            if currentSchema != snapshotAtQuestion {
+                result["contextUpdate"] = "The receiver added data sources while answering. Here is the refreshed approved schema:\n\n" + currentSchema
+            }
+        }
+
         do {
             try runner.sendToolResponse(
                 id: toolID,
                 ok: true,
-                result: ["answer": answer]
+                result: result
             )
         } catch {
             sessionStatus = "Failed to deliver answer: \(error.localizedDescription)"
         }
 
         pendingQuestionToolIDs.removeValue(forKey: question.id)
+        schemaSnapshotAtQuestion.removeValue(forKey: question.id)
         pendingQuestions.removeAll { $0.id == question.id }
     }
 
@@ -415,6 +466,7 @@ final class ReceiverAppModel: ObservableObject {
 
         stagedOutboundToolID = nil
         self.stagedOutbound = nil
+        hasDispatchedOutbound = true
     }
 
     func rejectOutboundDraft() {
@@ -439,6 +491,7 @@ final class ReceiverAppModel: ObservableObject {
 
         stagedOutboundToolID = nil
         self.stagedOutbound = nil
+        hasDispatchedOutbound = true
     }
 
     func isCapabilityApproved(_ capability: CapabilityRequest) -> Bool {
@@ -513,6 +566,7 @@ final class ReceiverAppModel: ObservableObject {
             if exitCode != 0 {
                 sessionStatus = "Session ended with exit \(exitCode)"
             }
+            isSessionActive = false
 
         case .toolRequest(let request):
             handleToolRequest(request)
@@ -525,13 +579,14 @@ final class ReceiverAppModel: ObservableObject {
             let decoded = request.asAskUser
             let questionID = UUID().uuidString
             pendingQuestionToolIDs[questionID] = request.id
+            schemaSnapshotAtQuestion[questionID] = HarnessPayloadBuilder.buildApprovedSchemaMarkdown(from: approvedSources)
 
             pendingQuestions.append(
                 PendingQuestion(
                     id: questionID,
                     title: decoded.title,
                     prompt: decoded.prompt,
-                    placeholder: decoded.placeholder,
+                    choices: decoded.choices,
                     requestPath: URL(fileURLWithPath: "/dev/null")
                 )
             )

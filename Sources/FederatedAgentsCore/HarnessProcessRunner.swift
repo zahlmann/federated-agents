@@ -45,11 +45,13 @@ public struct HarnessToolRequest: @unchecked Sendable {
         (arguments["message"] as? String) ?? ""
     }
 
-    public var asAskUser: (title: String, prompt: String, placeholder: String?) {
-        (
+    public var asAskUser: (title: String, prompt: String, choices: [String]) {
+        let choices = (arguments["choices"] as? [String]) ?? []
+
+        return (
             title: (arguments["title"] as? String) ?? "Question",
             prompt: (arguments["prompt"] as? String) ?? "",
-            placeholder: arguments["placeholder"] as? String
+            choices: choices
         )
     }
 

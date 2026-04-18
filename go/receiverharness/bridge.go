@@ -239,25 +239,26 @@ func (b *BridgeRunner) buildRegistry() *ToolRegistry {
 			_, err := b.dispatchTool(ctx, "send_message", map[string]any{"message": message})
 			return err
 		},
-		AskUser: func(ctx context.Context, title string, prompt string, placeholder string) (string, error) {
+		AskUser: func(ctx context.Context, title string, prompt string, choices []string) (string, string, error) {
 			reply, err := b.dispatchTool(ctx, "ask_user", map[string]any{
-				"title":       title,
-				"prompt":      prompt,
-				"placeholder": placeholder,
+				"title":   title,
+				"prompt":  prompt,
+				"choices": choices,
 			})
 			if err != nil {
-				return "", err
+				return "", "", err
 			}
 
 			var decoded struct {
-				Answer string `json:"answer"`
+				Answer        string `json:"answer"`
+				ContextUpdate string `json:"contextUpdate"`
 			}
 
 			if err := json.Unmarshal(reply, &decoded); err != nil {
-				return string(reply), nil
+				return string(reply), "", nil
 			}
 
-			return decoded.Answer, nil
+			return decoded.Answer, decoded.ContextUpdate, nil
 		},
 		RunSafeQuery: func(ctx context.Context, sql string, why string) (any, error) {
 			reply, err := b.dispatchTool(ctx, "run_safe_query", map[string]any{

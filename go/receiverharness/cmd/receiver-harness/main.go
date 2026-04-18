@@ -64,19 +64,24 @@ func run() error {
 			fmt.Printf("agent> %s\n", message)
 			return nil
 		},
-		AskUser: func(_ context.Context, title string, prompt string, placeholder string) (string, error) {
+		AskUser: func(_ context.Context, title string, prompt string, choices []string) (string, string, error) {
 			fmt.Printf("question> %s\n%s\n", title, prompt)
-			if placeholder != "" {
-				fmt.Printf("hint> %s\n", placeholder)
+			for i, choice := range choices {
+				fmt.Printf("  [%d] %s\n", i+1, choice)
 			}
 
-			fmt.Print("receiver> ")
-			answer, err := bufio.NewReader(os.Stdin).ReadString('\n')
+			fmt.Print("receiver (number)> ")
+			raw, err := bufio.NewReader(os.Stdin).ReadString('\n')
 			if err != nil {
-				return "", fmt.Errorf("read receiver answer: %w", err)
+				return "", "", fmt.Errorf("read receiver answer: %w", err)
 			}
 
-			return strings.TrimSpace(answer), nil
+			trimmed := strings.TrimSpace(raw)
+			if trimmed == "" {
+				return choices[0], "", nil
+			}
+
+			return trimmed, "", nil
 		},
 		RunSafeQuery: func(_ context.Context, sql string, why string) (any, error) {
 			fmt.Printf("safe-query> %s\n", sql)

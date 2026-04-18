@@ -26,7 +26,7 @@ func TestBridgeRunnerForwardsToolCalls(t *testing.T) {
 						Type:      "function_call",
 						CallID:    "call_ask",
 						Name:      "ask_user",
-						Arguments: json.RawMessage(`{"title":"Pick one","prompt":"Which field?","placeholder":"name"}`),
+						Arguments: json.RawMessage(`{"title":"Pick one","prompt":"Which field?","choices":["department","team"]}`),
 					},
 				},
 			},
@@ -97,13 +97,21 @@ func TestBridgeRunnerForwardsToolCalls(t *testing.T) {
 		t.Fatalf("tool_request missing id")
 	}
 
-	var args map[string]string
+	var args struct {
+		Title   string   `json:"title"`
+		Prompt  string   `json:"prompt"`
+		Choices []string `json:"choices"`
+	}
 	if err := json.Unmarshal(toolRequest.Arguments, &args); err != nil {
 		t.Fatalf("decode args: %v", err)
 	}
 
-	if args["title"] != "Pick one" || args["prompt"] != "Which field?" {
+	if args.Title != "Pick one" || args.Prompt != "Which field?" {
 		t.Fatalf("unexpected args: %#v", args)
+	}
+
+	if len(args.Choices) != 2 || args.Choices[0] != "department" {
+		t.Fatalf("unexpected choices: %#v", args.Choices)
 	}
 
 	response := BridgeInbound{
