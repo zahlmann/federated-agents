@@ -327,6 +327,9 @@ That is a much better debugging posture than "the model had some hidden context 
 
 ## How `codex exec` is actually called
 
+> Note: this section describes the Codex CLI path that was the first prototype runtime.
+> The live runtime no longer uses Codex. See [0002_responses_harness.md](0002_responses_harness.md) and [0003_harness_integration.md](0003_harness_integration.md) for the current Go-harness path; the Codex description below is preserved for historical context.
+
 The launch code is in:
 
 - `Sources/FederatedAgentsCore/CodexProcessRunner.swift`

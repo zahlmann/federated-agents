@@ -301,17 +301,13 @@ It is not the production app bridge.
 
 ## What is not wired yet
 
-The Swift receiver app still launches Codex CLI today.
+Nothing, as of the integration that followed this note.
 
-The Go harness exists beside it, not inside it.
+The Swift receiver app no longer launches Codex CLI. It spawns the Go harness directly and talks to it over NDJSON on stdin/stdout. The file-based `agentctl` bridge is gone from the runtime path.
 
-That means the next integration step is:
+See [0003_harness_integration.md](/Users/johann/code/federated-agents/notes_for_human/0003_harness_integration.md) for the integrated shape: binary layout, protocol, tool-response plumbing, and the Debug Trace pane.
 
-1. build the Go harness as a local binary
-2. have Swift launch that binary instead of `codex exec`
-3. replace the current file-based `agentctl` shell bridge with direct structured IPC between Swift and the Go harness
-
-Once we do that, the architecture becomes much cleaner:
+The architecture is now:
 
 - Swift app owns the receiver experience
 - Go harness owns the model loop
