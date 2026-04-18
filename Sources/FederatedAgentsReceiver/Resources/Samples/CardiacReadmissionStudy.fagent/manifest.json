@@ -14,20 +14,14 @@
   "signingPayloadFile" : "signing-payload.json",
   "signature" : {
     "algorithm" : "ed25519",
-    "publicKeyBase64" : "UGoBkEJROqt4AaBKlcIUHHGcT6aCBlgSV1APp/YPKsI=",
-    "signatureBase64" : "c93rhxp3rZ1kOzTJZf/M/wZfmaVAkYLI0OzjTCT0TlIhEyMsHXYdvO44pqg7yLgyvp56/Nu1u0JcpgyRhiJTDQ=="
+    "publicKeyBase64" : "d7Rn7TVkqO0lXFMTH/AdaWIvYzI1QJnw7RuRru5m4z0=",
+    "signatureBase64" : "lYiTgpXmlxcK4PmIbWbx4Gsmjj0QILzfG16shhnMRg20C+14lMVaEcISrFDlKXAdqDcLtFrKFZr8JHQ9nOPoDw=="
   },
   "requestedCapabilities" : [
     {
-      "id" : "ask-followups",
-      "kind" : "askFollowUpQuestions",
-      "reason" : "The hospital must pick the segmentation dimension and minimum cell size before any numbers are produced.",
-      "required" : true
-    },
-    {
       "id" : "analyze-csv",
       "kind" : "analyzeCSV",
-      "reason" : "The request expects the hospital's cardiac admissions CSV for the last 18 months.",
+      "reason" : "The request expects one or more approved cardiac admissions exports (EHR, and optionally a research registry copy).",
       "required" : true
     },
     {

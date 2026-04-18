@@ -1,9 +1,9 @@
 # Purpose
 
-The Vienna Cardiac Research Consortium is planning a multi-site study on 30-day readmission after cardiac interventions. Before writing the protocol, the consortium needs a privacy-safe view of where readmissions cluster in real-world hospital data: which procedure categories, which comorbidity profiles, which age bands.
+The Vienna Cardiac Research Consortium is planning a multi-site study on 30-day readmission after cardiac procedures. Before writing the protocol, they need a privacy-safe view of where readmissions cluster in real-world hospital data — which procedures, which comorbidity profiles, which age bands.
 
-The receiver is a hospital that holds the patient-level records for the last 18 months of cardiac admissions. The hospital's data governance forbids sharing any row-level, identifying, or near-identifying information with the research group.
+The receiver is a hospital. The hospital owns the records and makes every decision about what the researcher is allowed to see.
 
-What the sender wants is the **shape** of the problem, not the **who**: aggregated readmission rates per segment, with a minimum segment size decided by the hospital.
+The researcher will never receive row-level data, identifiers, dates, or addresses. Only aggregate segment-level findings, filtered through the hospital's privacy gate and reviewed by a human before anything leaves the device.
 
-This decision matters because an under-powered study is a wasted year of staff time, and an over-specified study can re-identify people. The hospital's choices about granularity are therefore part of the research design, not a roadblock.
+The hospital may initially only approve the primary EHR export. If the analysis needs additional signal — for example a research-registry copy that also captures mortality and complications — the hospital can add it mid-session.

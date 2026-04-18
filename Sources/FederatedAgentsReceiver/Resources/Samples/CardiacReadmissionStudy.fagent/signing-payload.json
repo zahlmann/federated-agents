@@ -4,11 +4,11 @@
   "trackedFiles": [
     {
       "path": "purpose.md",
-      "sha256": "f16d2b750e0bd29b6276aa7a7851e5f9c54767f6c96ae5fe8351df01bcca9a35"
+      "sha256": "6b16940af64105d43cf21482dd00da65eb2ce8a89a4dcd7fe98d00281bef05cb"
     },
     {
       "path": "instructions.md",
-      "sha256": "24dae0f88baeb716dfea678e642c2bd12341a4f83646ed106afc01a23e6a8852"
+      "sha256": "0f2b545b9bf6a55d3cfb107cf5962b13a8afbfdf769dc1aa4b5a46c53168fe93"
     }
   ]
 }
