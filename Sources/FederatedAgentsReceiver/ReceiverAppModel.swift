@@ -9,6 +9,174 @@ struct TraceEntry: Identifiable {
     let channel: String
     let payloadJSON: String
     let timestamp: Date
+    let summary: String
+}
+
+enum TraceSummary {
+    static func make(channel: String, payloadJSON: String) -> String {
+        let payload = parse(payloadJSON)
+
+        switch channel {
+        case "api_request":
+            return summariseAPIRequest(payload, rawSize: payloadJSON.count)
+        case "api_response":
+            return summariseAPIResponse(payload)
+        case "api_error":
+            return (payload?["error"] as? String).map { "error: \(truncate($0, 200))" } ?? "api_error"
+        case "tool_request":
+            return summariseToolRequest(payload)
+        case "tool_response":
+            return summariseToolResponse(payload)
+        case "initial_input":
+            let text = payload?["input"] as? String ?? ""
+            return "initial input (\(text.count) chars)"
+        case "instructions":
+            let text = payload?["instructions"] as? String ?? ""
+            return "instructions (\(text.count) chars)"
+        case "final_text":
+            let text = payload?["text"] as? String ?? ""
+            return "final: \(truncate(text, 140))"
+        case "nudge":
+            let attempt = payload?["attempt"] as? Int ?? 0
+            return "nudge attempt \(attempt) — model produced text without calling submit_result"
+        default:
+            return channel
+        }
+    }
+
+    private static func summariseAPIRequest(_ payload: [String: Any]?, rawSize: Int) -> String {
+        let tools = ((payload?["Tools"] ?? payload?["tools"]) as? [[String: Any]]) ?? []
+        let toolNames = tools.compactMap { ($0["Name"] ?? $0["name"]) as? String }
+        let prevID = (payload?["PreviousResponseID"] ?? payload?["previous_response_id"]) as? String
+        let input = ((payload?["Input"] ?? payload?["input"]) as? [[String: Any]]) ?? []
+
+        var parts: [String] = ["→ api request"]
+        if !toolNames.isEmpty {
+            parts.append("tools=[\(toolNames.joined(separator: ","))]")
+        }
+
+        parts.append("input items=\(input.count)")
+
+        if let prevID, !prevID.isEmpty {
+            parts.append("prev=\(truncate(prevID, 18))")
+        }
+
+        return parts.joined(separator: " ")
+    }
+
+    private static func summariseAPIResponse(_ payload: [String: Any]?) -> String {
+        let outputs = ((payload?["Output"] ?? payload?["output"]) as? [[String: Any]]) ?? []
+        var calls: [String] = []
+        var messages = 0
+
+        for item in outputs {
+            let type = (item["Type"] ?? item["type"]) as? String
+            switch type {
+            case "function_call":
+                if let name = (item["Name"] ?? item["name"]) as? String {
+                    calls.append(name)
+                }
+            case "message":
+                messages += 1
+            default:
+                break
+            }
+        }
+
+        var parts: [String] = ["← api response"]
+        if !calls.isEmpty {
+            parts.append("calls=[\(calls.joined(separator: ","))]")
+        }
+
+        if messages > 0 {
+            parts.append("messages=\(messages)")
+        }
+
+        if calls.isEmpty && messages == 0 {
+            parts.append("empty")
+        }
+
+        return parts.joined(separator: " ")
+    }
+
+    private static func summariseToolRequest(_ payload: [String: Any]?) -> String {
+        let name = (payload?["name"] as? String) ?? "?"
+        let args = payload?["arguments"] as? [String: Any]
+        let preview = previewArguments(name: name, args: args)
+        return "→ tool \(name)(\(preview))"
+    }
+
+    private static func summariseToolResponse(_ payload: [String: Any]?) -> String {
+        let name = (payload?["name"] as? String) ?? "?"
+        let ok = payload?["ok"] as? Bool ?? false
+        let errorText = payload?["error"] as? String ?? ""
+
+        if !ok {
+            return "← tool \(name): error \(truncate(errorText, 120))"
+        }
+
+        if let result = payload?["result"] {
+            let resultText: String
+            if let dict = result as? [String: Any] {
+                if let answer = dict["answer"] as? String {
+                    resultText = "answer=\"\(truncate(answer, 80))\""
+                } else if let status = dict["status"] as? String {
+                    let message = dict["message"] as? String ?? ""
+                    resultText = "status=\(status) \(truncate(message, 80))"
+                } else if let rows = dict["rows"] as? [[Any]] {
+                    resultText = "rows=\(rows.count)"
+                } else {
+                    resultText = "keys=[\(dict.keys.sorted().joined(separator: ","))]"
+                }
+            } else {
+                resultText = String(describing: result).prefix(100).description
+            }
+            return "← tool \(name): ok \(resultText)"
+        }
+
+        return "← tool \(name): ok"
+    }
+
+    private static func previewArguments(name: String, args: [String: Any]?) -> String {
+        guard let args else {
+            return ""
+        }
+
+        switch name {
+        case "send_message":
+            let message = args["message"] as? String ?? ""
+            return "\"\(truncate(message, 120))\""
+        case "ask_user":
+            let title = args["title"] as? String ?? ""
+            let prompt = args["prompt"] as? String ?? ""
+            return "title=\"\(truncate(title, 40))\", prompt=\"\(truncate(prompt, 90))\""
+        case "run_safe_query":
+            let sql = args["sql"] as? String ?? ""
+            return "sql=\"\(truncate(sql.replacingOccurrences(of: "\n", with: " "), 140))\""
+        case "submit_result":
+            let summary = args["summary"] as? String ?? ""
+            return "summary=\"\(truncate(summary, 120))\""
+        default:
+            let keys = args.keys.sorted().joined(separator: ",")
+            return "keys=[\(keys)]"
+        }
+    }
+
+    private static func parse(_ json: String) -> [String: Any]? {
+        guard let data = json.data(using: .utf8) else {
+            return nil
+        }
+
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    }
+
+    private static func truncate(_ value: String, _ maxLength: Int) -> String {
+        if value.count <= maxLength {
+            return value
+        }
+
+        return String(value.prefix(maxLength)) + "…"
+    }
 }
 
 @MainActor
@@ -321,11 +489,13 @@ final class ReceiverAppModel: ObservableObject {
             logs.append(line)
 
         case .trace(let trace):
+            let summary = TraceSummary.make(channel: trace.channel, payloadJSON: trace.payloadJSON)
             traceEntries.append(
                 TraceEntry(
                     channel: trace.channel,
                     payloadJSON: trace.payloadJSON,
-                    timestamp: trace.timestamp ?? Date()
+                    timestamp: trace.timestamp ?? Date(),
+                    summary: summary
                 )
             )
 

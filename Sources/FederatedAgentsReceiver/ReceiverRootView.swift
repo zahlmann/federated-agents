@@ -114,29 +114,7 @@ struct ReceiverRootView: View {
     }
 
     private func traceEntryView(_ entry: TraceEntry) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                Text(entry.channel)
-                    .font(.caption.monospaced().weight(.semibold))
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(Color.accentColor.opacity(0.18))
-                    )
-
-                Text(entry.timestamp.formatted(date: .omitted, time: .standard))
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
-            }
-
-            Text(entry.payloadJSON)
-                .font(.caption.monospaced())
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 4)
+        TraceEntryRow(entry: entry)
     }
 
     private var packageHeader: some View {
@@ -302,6 +280,73 @@ struct ReceiverRootView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+private struct TraceEntryRow: View {
+    let entry: TraceEntry
+    @State private var expanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 10)
+
+                Text(entry.timestamp.formatted(date: .omitted, time: .standard))
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+
+                Text(entry.channel)
+                    .font(.caption.monospaced().weight(.semibold))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(channelColor.opacity(0.22))
+                    )
+                    .foregroundStyle(channelColor)
+
+                Text(entry.summary)
+                    .font(.caption.monospaced())
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    expanded.toggle()
+                }
+            }
+
+            if expanded {
+                Text(entry.payloadJSON)
+                    .font(.caption2.monospaced())
+                    .textSelection(.enabled)
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 22)
+                    .padding(.top, 2)
+                    .padding(.bottom, 4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 1)
+    }
+
+    private var channelColor: Color {
+        switch entry.channel {
+        case "api_request": return .blue
+        case "api_response": return .teal
+        case "api_error", "nudge": return .orange
+        case "tool_request": return .purple
+        case "tool_response": return .green
+        case "final_text": return .accentColor
+        default: return .secondary
         }
     }
 }
