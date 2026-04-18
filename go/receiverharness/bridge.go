@@ -95,7 +95,9 @@ func (b *BridgeRunner) Run(ctx context.Context) error {
 		instructions = BuildReceiverInstructions()
 	}
 
+	submitted := false
 	registry := b.buildRegistry()
+	b.installSubmitTracker(registry, &submitted)
 	client := &tracingResponseClient{inner: b.Client, emit: b.emitTrace}
 
 	b.emitStatus("session starting")
@@ -117,9 +119,52 @@ func (b *BridgeRunner) Run(ctx context.Context) error {
 		return err
 	}
 
+	nudgeAttempts := 0
+	for !submitted && nudgeAttempts < 2 {
+		nudgeAttempts++
+
+		b.emitTrace("nudge", map[string]any{
+			"attempt":         nudgeAttempts,
+			"previousFinal":   result.FinalText,
+		})
+
+		nudgeInput := "The harness rules require every externally visible action to be a tool call. " +
+			"You produced assistant text without calling submit_result. " +
+			"If you need clarification, call ask_user with the question in the prompt field. " +
+			"If you are ready to deliver the answer, call submit_result with the JSON-encoded payload. " +
+			"Do not reply with plain text."
+
+		retry, retryErr := RunSession(ctx, client, SessionConfig{
+			Model:           start.Model,
+			Instructions:    instructions,
+			InitialInput:    nudgeInput,
+			ReasoningEffort: start.ReasoningEffort,
+			Store:           true,
+			ToolRegistry:    registry,
+		})
+		if retryErr != nil {
+			b.emitError(retryErr)
+			return retryErr
+		}
+
+		result = retry
+	}
+
 	b.emitTrace("final_text", map[string]string{"text": result.FinalText})
 	b.emit(BridgeOutbound{Type: "final", Text: result.FinalText})
 	return nil
+}
+
+func (b *BridgeRunner) installSubmitTracker(registry *ToolRegistry, submitted *bool) {
+	original, ok := registry.handlers["submit_result"]
+	if !ok {
+		return
+	}
+
+	registry.handlers["submit_result"] = func(ctx context.Context, call FunctionCall) (any, error) {
+		*submitted = true
+		return original(ctx, call)
+	}
 }
 
 func (b *BridgeRunner) waitForStart(reader *bufio.Reader) (*BridgeStartMessage, error) {

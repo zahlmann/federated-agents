@@ -31,7 +31,19 @@ func TestBridgeRunnerForwardsToolCalls(t *testing.T) {
 				},
 			},
 			{
-				ID:         "resp_2",
+				ID: "resp_2",
+				Output: []OutputItem{
+					{
+						ID:        "fc_2",
+						Type:      "function_call",
+						CallID:    "call_submit",
+						Name:      "submit_result",
+						Arguments: json.RawMessage(`{"summary":"answered","payload":"{\"field\":\"department\"}"}`),
+					},
+				},
+			},
+			{
+				ID:         "resp_3",
 				OutputText: "done",
 			},
 		},
@@ -108,6 +120,31 @@ func TestBridgeRunnerForwardsToolCalls(t *testing.T) {
 
 	if _, err := bridgeStdin.Write(append(encoded, '\n')); err != nil {
 		t.Fatalf("write tool_response: %v", err)
+	}
+
+	submitRequest, err := readOutbound(reader, "tool_request")
+	if err != nil {
+		t.Fatalf("read submit tool_request: %v", err)
+	}
+
+	if submitRequest.ToolName != "submit_result" {
+		t.Fatalf("expected submit_result tool call, got %q", submitRequest.ToolName)
+	}
+
+	submitResponse := BridgeInbound{
+		Type:   "tool_response",
+		ToolID: submitRequest.ToolID,
+		OK:     true,
+		Result: json.RawMessage(`{"status":"approved","message":"ok"}`),
+	}
+
+	encoded, err = json.Marshal(submitResponse)
+	if err != nil {
+		t.Fatalf("marshal submit tool_response: %v", err)
+	}
+
+	if _, err := bridgeStdin.Write(append(encoded, '\n')); err != nil {
+		t.Fatalf("write submit tool_response: %v", err)
 	}
 
 	finalMessage, err := readOutbound(reader, "final")
