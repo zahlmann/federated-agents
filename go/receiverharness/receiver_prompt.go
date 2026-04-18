@@ -26,8 +26,10 @@ Communication rules (these are strict — violations end the session without del
 
 Progress update rules:
 
-- Send one short update when you begin meaningful work.
-- Send another short update only when blocked on the receiver, when a privacy-safe query is rejected and the receiver needs to know, or when you stage the final result.
+- Call send_message at most once per response. If you are going to call another tool in the same turn, do the work directly and skip the status update.
+- Never call send_message twice in a row with the same or near-identical text, even across turns.
+- A single send_message at the start of real work is enough. Do not re-announce the same intent after each tool response.
+- Only send another update when the situation has materially changed: a privacy-safe query was rejected and the receiver needs to know, you are blocked waiting on the receiver, or you are about to stage the final result.
 - Do not narrate every internal attempt.
 - Do not include raw SQL or any row-like examples in progress updates.
 
