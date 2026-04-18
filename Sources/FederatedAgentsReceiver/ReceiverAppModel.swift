@@ -190,7 +190,7 @@ final class ReceiverAppModel: ObservableObject {
 
             try runner.start(with: HarnessStartPayload(
                 model: "gpt-5.4",
-                reasoningEffort: "medium",
+                reasoningEffort: "xhigh",
                 packageMarkdown: packageMarkdown,
                 schemaMarkdown: schemaMarkdown
             ))
